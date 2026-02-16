@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useGameStore } from "@/store/game-store";
 
 export function GameRuntime() {
-  const { slots, managers, addResource, hydrated } = useGameStore();
+  const { slots, addResource, getEffectivePps, hydrated } = useGameStore();
   const fractionalRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
@@ -20,13 +20,13 @@ export function GameRuntime() {
           continue;
         }
 
-        const manager = managers[slot.managerId];
-        if (!manager || manager.pps <= 0) {
+        const effectivePps = getEffectivePps(slot.managerId, slot.resourceType);
+        if (effectivePps <= 0) {
           continue;
         }
 
         const currentProgress = fractionalRef.current[slot.id] ?? 0;
-        const total = currentProgress + manager.pps * deltaSeconds;
+        const total = currentProgress + effectivePps * deltaSeconds;
         const whole = Math.floor(total);
         fractionalRef.current[slot.id] = total - whole;
 
@@ -39,7 +39,7 @@ export function GameRuntime() {
     return () => {
       window.clearInterval(interval);
     };
-  }, [slots, managers, addResource, hydrated]);
+  }, [slots, addResource, getEffectivePps, hydrated]);
 
   return null;
 }
