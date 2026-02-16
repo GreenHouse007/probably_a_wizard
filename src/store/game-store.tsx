@@ -17,7 +17,6 @@ import {
   DEFAULT_SLOTS,
   HUT_CAPACITY,
   HUT_COST,
-  PERSON_MANAGER_IDS,
   makeCombinationKey,
   type Buildings,
   type Inventory,
@@ -65,7 +64,11 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
   const hasLoadedRef = useRef(false);
 
   const housedPeople = useMemo(
-    () => PERSON_MANAGER_IDS.filter((managerId) => managers[managerId].unlocked).length,
+    () =>
+      Object.values(managers).reduce(
+        (total, manager) => total + (manager.unlocked ? manager.housingCost : 0),
+        0,
+      ),
     [managers],
   );
   const housingCapacity = buildings.huts * HUT_CAPACITY;
@@ -161,10 +164,11 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, reason: "Manager already unlocked." };
       }
 
-      if (PERSON_MANAGER_IDS.includes(managerId) && housedPeople >= housingCapacity) {
+      const nextHousingTotal = housedPeople + manager.housingCost;
+      if (manager.housingCost > 0 && nextHousingTotal > housingCapacity) {
         return {
           ok: false,
-          reason: "No housing available. Build a hut before unlocking more people.",
+          reason: `Not enough housing for ${manager.name}. Needs ${manager.housingCost} housing (would be ${nextHousingTotal}/${housingCapacity}).`,
         };
       }
 

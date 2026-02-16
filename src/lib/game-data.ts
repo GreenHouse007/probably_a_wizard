@@ -25,6 +25,7 @@ export type ManagerDefinition = {
   id: ManagerId;
   name: string;
   pps: number;
+  housingCost: number;
   unlocked: boolean;
 };
 
@@ -64,26 +65,24 @@ export const HUT_COST: Partial<Inventory> = {
 export const HUT_CAPACITY = 2;
 
 export const MANAGER_DEFINITIONS: Record<ManagerId, Omit<ManagerDefinition, "unlocked">> = {
-  "basic-gatherer": { id: "basic-gatherer", name: "Basic Gatherer", pps: 0.5 },
-  gatherer: { id: "gatherer", name: "Gatherer", pps: 1 },
-  collector: { id: "collector", name: "Collector", pps: 1.1 },
-  builder: { id: "builder", name: "Builder", pps: 1.5 },
-  explorer: { id: "explorer", name: "Explorer", pps: 1.2 },
-  miner: { id: "miner", name: "Miner", pps: 1.3 },
-  engineer: { id: "engineer", name: "Engineer", pps: 2 },
-  foreman: { id: "foreman", name: "Foreman", pps: 1.9 },
-  scout: { id: "scout", name: "Scout", pps: 1.8 },
-  prospector: { id: "prospector", name: "Prospector", pps: 2 },
-  smith: { id: "smith", name: "Smith", pps: 2 },
-  architect: { id: "architect", name: "Architect", pps: 2.3 },
-  cartographer: { id: "cartographer", name: "Cartographer", pps: 2.3 },
-  driller: { id: "driller", name: "Driller", pps: 2.4 },
-  "supply-chief": { id: "supply-chief", name: "Supply Chief", pps: 2.2 },
-  trailblazer: { id: "trailblazer", name: "Trailblazer", pps: 2.2 },
-  excavator: { id: "excavator", name: "Excavator", pps: 2.7 },
+  "basic-gatherer": { id: "basic-gatherer", name: "Basic Gatherer", pps: 0.5, housingCost: 0 },
+  gatherer: { id: "gatherer", name: "Gatherer", pps: 1, housingCost: 1 },
+  collector: { id: "collector", name: "Collector", pps: 1.1, housingCost: 1 },
+  builder: { id: "builder", name: "Builder", pps: 1.5, housingCost: 1 },
+  explorer: { id: "explorer", name: "Explorer", pps: 1.2, housingCost: 1 },
+  miner: { id: "miner", name: "Miner", pps: 1.3, housingCost: 1 },
+  engineer: { id: "engineer", name: "Engineer", pps: 2, housingCost: 1 },
+  foreman: { id: "foreman", name: "Foreman", pps: 1.9, housingCost: 1 },
+  scout: { id: "scout", name: "Scout", pps: 1.8, housingCost: 1 },
+  prospector: { id: "prospector", name: "Prospector", pps: 2, housingCost: 1 },
+  smith: { id: "smith", name: "Smith", pps: 2, housingCost: 1 },
+  architect: { id: "architect", name: "Architect", pps: 2.3, housingCost: 1 },
+  cartographer: { id: "cartographer", name: "Cartographer", pps: 2.3, housingCost: 1 },
+  driller: { id: "driller", name: "Driller", pps: 2.4, housingCost: 1 },
+  "supply-chief": { id: "supply-chief", name: "Supply Chief", pps: 2.2, housingCost: 1 },
+  trailblazer: { id: "trailblazer", name: "Trailblazer", pps: 2.2, housingCost: 1 },
+  excavator: { id: "excavator", name: "Excavator", pps: 2.7, housingCost: 1 },
 };
-
-export const PERSON_MANAGER_IDS: ManagerId[] = ["gatherer", "collector"];
 
 export const UNLOCK_COSTS: Partial<Record<ManagerId, Partial<Inventory>>> = {
   gatherer: { food: 10, water: 5 },
