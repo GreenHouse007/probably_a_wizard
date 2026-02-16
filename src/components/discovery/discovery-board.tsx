@@ -18,6 +18,14 @@ type WorkspaceTile = {
 
 const TILE_SIZE = 96;
 
+const clampToWorkspace = (value: number, workspaceSize?: number) => {
+  if (workspaceSize === undefined) {
+    return Math.max(0, value);
+  }
+
+  return Math.min(Math.max(0, value), Math.max(0, workspaceSize - TILE_SIZE));
+};
+
 export function DiscoveryBoard() {
   const {
     managers,
@@ -36,14 +44,20 @@ export function DiscoveryBoard() {
     [discoveredManagerIds, managers],
   );
 
-  const placeTile = (managerId: ManagerId, x: number, y: number) => {
+  const placeTile = (
+    managerId: ManagerId,
+    x: number,
+    y: number,
+    workspaceWidth?: number,
+    workspaceHeight?: number,
+  ) => {
     setTiles((current) => [
       ...current,
       {
         id: `${managerId}-${Date.now()}-${Math.random()}`,
         managerId,
-        x,
-        y,
+        x: clampToWorkspace(x, workspaceWidth),
+        y: clampToWorkspace(y, workspaceHeight),
       },
     ]);
   };
@@ -60,18 +74,33 @@ export function DiscoveryBoard() {
       managerId,
       event.clientX - bounds.left - TILE_SIZE / 2,
       event.clientY - bounds.top - TILE_SIZE / 2,
+      bounds.width,
+      bounds.height,
     );
   };
 
-  const combineAt = (movedTileId: string, x?: number, y?: number) => {
+  const combineAt = (
+    movedTileId: string,
+    x?: number,
+    y?: number,
+    workspaceWidth?: number,
+    workspaceHeight?: number,
+  ) => {
     setTiles((current) => {
       const moved = current.find((tile) => tile.id === movedTileId);
       if (!moved) {
         return current;
       }
 
+      const clampedX =
+        x === undefined ? undefined : clampToWorkspace(x, workspaceWidth);
+      const clampedY =
+        y === undefined ? undefined : clampToWorkspace(y, workspaceHeight);
+
       const movedTile =
-        x === undefined || y === undefined ? moved : { ...moved, x, y };
+        clampedX === undefined || clampedY === undefined
+          ? moved
+          : { ...moved, x: clampedX, y: clampedY };
 
       const movedCurrent = current.map((tile) =>
         tile.id === movedTileId ? movedTile : tile,
@@ -88,12 +117,12 @@ export function DiscoveryBoard() {
       });
 
       if (!overlap) {
-        return current;
+        return movedCurrent;
       }
 
       const result = attemptCombine(movedTile.managerId, overlap.managerId);
       if (!result.ok || !result.discoveredId) {
-        return current;
+        return movedCurrent;
       }
 
       const resultManager = managers[result.discoveredId];
@@ -113,8 +142,8 @@ export function DiscoveryBoard() {
         {
           id: `${result.discoveredId}-${Date.now()}`,
           managerId: result.discoveredId,
-          x: (movedTile.x + overlap.x) / 2,
-          y: (movedTile.y + overlap.y) / 2,
+          x: clampToWorkspace((movedTile.x + overlap.x) / 2, workspaceWidth),
+          y: clampToWorkspace((movedTile.y + overlap.y) / 2, workspaceHeight),
         },
       ];
     });
@@ -230,7 +259,7 @@ export function DiscoveryBoard() {
                 const nextX = event.clientX - workspace.left - TILE_SIZE / 2;
                 const nextY = event.clientY - workspace.top - TILE_SIZE / 2;
 
-                combineAt(tile.id, nextX, nextY);
+                combineAt(tile.id, nextX, nextY, workspace.width, workspace.height);
               }}
               style={{
                 left: `${tile.x}px`,
