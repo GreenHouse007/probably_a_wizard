@@ -28,6 +28,13 @@ import {
 } from "@/lib/game-data";
 import { gamePersistence } from "@/lib/persistence";
 
+const OFFLINE_GAIN_CAP_SECONDS = 12 * 60 * 60;
+
+type OfflineProgressSummary = {
+  elapsedSeconds: number;
+  gains: Partial<Inventory>;
+};
+
 export type GameState = {
   inventory: Inventory;
   managers: Record<ManagerId, ManagerDefinition>;
@@ -37,6 +44,8 @@ export type GameState = {
   housingCapacity: number;
   housedPeople: number;
   hydrated: boolean;
+  offlineProgressSummary: OfflineProgressSummary | null;
+  dismissOfflineProgressSummary: () => void;
   addResource: (resource: ResourceType, amount?: number) => void;
   unlockManager: (managerId: ManagerId) => { ok: boolean; reason?: string };
   buildHut: () => { ok: boolean; reason?: string };
@@ -61,6 +70,8 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
   );
   const [slots, setSlots] = useState(DEFAULT_SLOTS);
   const [hydrated, setHydrated] = useState(false);
+  const [offlineProgressSummary, setOfflineProgressSummary] =
+    useState<OfflineProgressSummary | null>(null);
   const hasLoadedRef = useRef(false);
 
   const housedPeople = useMemo(
@@ -85,22 +96,74 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      setInventory(saved.inventory);
+      const restoredSlots = saved.slots.length === 4 ? saved.slots : DEFAULT_SLOTS;
+
+      const restoredManagers = { ...DEFAULT_MANAGERS };
+      for (const managerId of saved.unlockedManagerIds) {
+        const manager = restoredManagers[managerId];
+        if (manager) {
+          restoredManagers[managerId] = { ...manager, unlocked: true };
+        }
+      }
+
+      const elapsedSecondsRaw = saved.lastActiveAt
+        ? (Date.now() - saved.lastActiveAt) / 1000
+        : 0;
+      const elapsedSeconds = Math.max(
+        0,
+        Math.min(OFFLINE_GAIN_CAP_SECONDS, elapsedSecondsRaw),
+      );
+
+      const gains: Partial<Inventory> = {};
+      if (elapsedSeconds > 0) {
+        for (const slot of restoredSlots) {
+          if (!slot.managerId) {
+            continue;
+          }
+
+          const manager = restoredManagers[slot.managerId];
+          if (!manager || manager.pps <= 0) {
+            continue;
+          }
+
+          gains[slot.resourceType] =
+            (gains[slot.resourceType] ?? 0) + manager.pps * elapsedSeconds;
+        }
+      }
+
+      const hasGains = Object.values(gains).some((amount) => (amount ?? 0) > 0);
+      const nextInventory = hasGains
+        ? {
+            ...saved.inventory,
+            food: Number((saved.inventory.food + (gains.food ?? 0)).toFixed(3)),
+            water: Number((saved.inventory.water + (gains.water ?? 0)).toFixed(3)),
+            sticks: Number((saved.inventory.sticks + (gains.sticks ?? 0)).toFixed(3)),
+            stone: Number((saved.inventory.stone + (gains.stone ?? 0)).toFixed(3)),
+          }
+        : saved.inventory;
+
+      setInventory(nextInventory);
       if (saved.buildings) {
         setBuildings(saved.buildings);
       }
-      setManagers((current) => {
-        const next = { ...current };
-        for (const managerId of saved.unlockedManagerIds) {
-          const manager = next[managerId];
-          if (manager) {
-            next[managerId] = { ...manager, unlocked: true };
-          }
-        }
-        return next;
-      });
+      setManagers(restoredManagers);
       setDiscoveredManagerIds(saved.discoveredManagerIds);
-      setSlots(saved.slots.length === 4 ? saved.slots : DEFAULT_SLOTS);
+
+      setSlots(restoredSlots);
+
+      if (hasGains) {
+        const roundedGains: Partial<Inventory> = {};
+        for (const [resource, amount] of Object.entries(gains)) {
+          const key = resource as keyof Inventory;
+          roundedGains[key] = Number((amount ?? 0).toFixed(3));
+        }
+
+        setOfflineProgressSummary({
+          elapsedSeconds,
+          gains: roundedGains,
+        });
+      }
+
       setHydrated(true);
     });
   }, []);
@@ -120,8 +183,13 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       unlockedManagerIds,
       discoveredManagerIds,
       slots,
+      lastActiveAt: Date.now(),
     });
   }, [hydrated, inventory, buildings, managers, discoveredManagerIds, slots]);
+
+  const dismissOfflineProgressSummary = useCallback(() => {
+    setOfflineProgressSummary(null);
+  }, []);
 
   const addResource = useCallback((resource: ResourceType, amount = 1) => {
     setInventory((current) => ({
@@ -267,6 +335,8 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       housedPeople,
       housingCapacity,
       hydrated,
+      offlineProgressSummary,
+      dismissOfflineProgressSummary,
       addResource,
       unlockManager,
       buildHut,
@@ -282,6 +352,8 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       housedPeople,
       housingCapacity,
       hydrated,
+      offlineProgressSummary,
+      dismissOfflineProgressSummary,
       addResource,
       unlockManager,
       buildHut,
@@ -292,6 +364,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
 
   return <GameStoreContext.Provider value={value}>{children}</GameStoreContext.Provider>;
 }
+
 
 export function useGameStore() {
   const context = useContext(GameStoreContext);
