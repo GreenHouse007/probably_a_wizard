@@ -152,7 +152,7 @@ export function DiscoveryBoard() {
         </div>
 
         <p className="mt-3 text-xs text-violet-200/90">
-          Housing used: <span className="font-semibold">{housedPeople}</span> / {housingCapacity} (build huts in Buildings tab).
+          Housing used: <span className="font-semibold">{housedPeople}</span> / {housingCapacity}. Unlocks fail when a role&apos;s housing requirement cannot fit (build huts in Buildings tab).
         </p>
 
         <div className="mt-4 space-y-2">
@@ -194,6 +194,9 @@ export function DiscoveryBoard() {
                         `${Math.floor(inventory[resource as keyof typeof inventory])} ${RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}`,
                     )
                     .join(" | ")}
+                </div>
+                <div className="text-xs text-amber-200/80">
+                  Housing required: {manager.housingCost === 0 ? "None (special entity)" : `${manager.housingCost}`}
                 </div>
               </button>
             );
