@@ -1,11 +1,11 @@
 {
-  "name": "Probably A Wizard",
-  "short_name": "PAW",
-  "description": "Probably A Wizard - A magical game",
+  "name": "Probably a Wizard",
+  "short_name": "Probably a Wizard",
+  "description": "Idle + alchemy style manager discovery game",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#6c3fc5",
+  "background_color": "#15102a",
+  "theme_color": "#15102a",
   "orientation": "portrait",
   "icons": [
     {
