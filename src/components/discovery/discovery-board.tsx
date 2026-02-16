@@ -17,6 +17,9 @@ type WorkspaceTile = {
 };
 
 const TILE_SIZE = 96;
+const DRAG_SOURCE_KEY = "drag-source";
+const LIBRARY_SOURCE = "library";
+const WORKSPACE_SOURCE = "workspace";
 
 const clampToWorkspace = (value: number, workspaceSize?: number) => {
   if (workspaceSize === undefined) {
@@ -64,6 +67,12 @@ export function DiscoveryBoard() {
 
   const handleDropOnWorkspace = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+
+    const dragSource = event.dataTransfer.getData(DRAG_SOURCE_KEY);
+    if (dragSource === WORKSPACE_SOURCE) {
+      return;
+    }
+
     const managerId = event.dataTransfer.getData("manager-id") as ManagerId;
     if (!managerId) {
       return;
@@ -166,6 +175,7 @@ export function DiscoveryBoard() {
               key={managerId}
               draggable
               onDragStart={(event) => {
+                event.dataTransfer.setData(DRAG_SOURCE_KEY, LIBRARY_SOURCE);
                 event.dataTransfer.setData("manager-id", managerId);
               }}
               className="flex w-full items-center gap-3 rounded-xl border border-violet-200/20 bg-violet-800/55 px-3 py-2 text-left text-sm text-violet-50 shadow"
@@ -248,6 +258,7 @@ export function DiscoveryBoard() {
               key={tile.id}
               draggable
               onDragStart={(event) => {
+                event.dataTransfer.setData(DRAG_SOURCE_KEY, WORKSPACE_SOURCE);
                 event.dataTransfer.setData("manager-id", tile.managerId);
               }}
               onDragEnd={(event) => {

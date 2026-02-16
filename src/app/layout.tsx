@@ -3,9 +3,15 @@ import "./globals.css";
 import { GameShell } from "@/components/game/game-shell";
 
 export const metadata: Metadata = {
-  title: "Probably A Wizard - MVP",
+  title: "Probably a Wizard",
   description: "Idle + alchemy style manager discovery game",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" }
+    ]
+  },
 };
 
 export const viewport: Viewport = {

@@ -15,6 +15,7 @@ const STORAGE_KEY = "probably-a-wizard-mvp-save-v3";
 export interface GamePersistence {
   load(): Promise<PersistedGameState | null>;
   save(state: PersistedGameState): Promise<void>;
+  clear(): Promise<void>;
 }
 
 class LocalStoragePersistence implements GamePersistence {
@@ -41,6 +42,14 @@ class LocalStoragePersistence implements GamePersistence {
     }
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  async clear() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.removeItem(STORAGE_KEY);
   }
 }
 

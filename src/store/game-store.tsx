@@ -17,6 +17,9 @@ import {
   DEFAULT_SLOTS,
   HUT_CAPACITY,
   HUT_COST,
+  WORKSHOP_UNLOCK_HUTS,
+  getSticksPpsMultiplier,
+  getWorkshopCost,
   makeCombinationKey,
   type Buildings,
   type Inventory,
@@ -47,6 +50,7 @@ export type GameState = {
   hydrated: boolean;
   offlineProgressSummary: OfflineProgressSummary | null;
   dismissOfflineProgressSummary: () => void;
+  resetGame: () => Promise<void>;
   addResource: (resource: ResourceType, amount?: number) => void;
   unlockManager: (managerId: ManagerId) => { ok: boolean; reason?: string };
   buildHut: () => { ok: boolean; reason?: string };
@@ -64,14 +68,27 @@ function getInitialDiscovered() {
     .map((manager) => manager.id) as ManagerId[]).sort();
 }
 
+function getDefaultManagers() {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_MANAGERS).map(([managerId, manager]) => [
+      managerId,
+      { ...manager },
+    ]),
+  ) as Record<ManagerId, ManagerDefinition>;
+}
+
+function getDefaultSlots() {
+  return DEFAULT_SLOTS.map((slot) => ({ ...slot }));
+}
+
 export function GameStoreProvider({ children }: { children: React.ReactNode }) {
   const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
   const [buildings, setBuildings] = useState(DEFAULT_BUILDINGS);
-  const [managers, setManagers] = useState(DEFAULT_MANAGERS);
+  const [managers, setManagers] = useState(getDefaultManagers);
   const [discoveredManagerIds, setDiscoveredManagerIds] = useState<ManagerId[]>(
     getInitialDiscovered(),
   );
-  const [slots, setSlots] = useState(DEFAULT_SLOTS);
+  const [slots, setSlots] = useState(getDefaultSlots);
   const [hydrated, setHydrated] = useState(false);
   const [offlineProgressSummary, setOfflineProgressSummary] =
     useState<OfflineProgressSummary | null>(null);
@@ -108,12 +125,9 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      setInventory(saved.inventory);
-      if (saved.buildings) {
-        setBuildings({ ...DEFAULT_BUILDINGS, ...saved.buildings });
-      const restoredSlots = saved.slots.length === 4 ? saved.slots : DEFAULT_SLOTS;
+      const restoredSlots = saved.slots.length === 4 ? saved.slots : getDefaultSlots();
 
-      const restoredManagers = { ...DEFAULT_MANAGERS };
+      const restoredManagers = getDefaultManagers();
       for (const managerId of saved.unlockedManagerIds) {
         const manager = restoredManagers[managerId];
         if (manager) {
@@ -204,6 +218,17 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
 
   const dismissOfflineProgressSummary = useCallback(() => {
     setOfflineProgressSummary(null);
+  }, []);
+
+  const resetGame = useCallback(async () => {
+    await gamePersistence.clear();
+    setInventory({ ...DEFAULT_INVENTORY });
+    setBuildings({ ...DEFAULT_BUILDINGS });
+    setManagers(getDefaultManagers());
+    setDiscoveredManagerIds(getInitialDiscovered());
+    setSlots(getDefaultSlots());
+    setOfflineProgressSummary(null);
+    setHydrated(true);
   }, []);
 
   const addResource = useCallback((resource: ResourceType, amount = 1) => {
@@ -395,6 +420,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       hydrated,
       offlineProgressSummary,
       dismissOfflineProgressSummary,
+      resetGame,
       addResource,
       unlockManager,
       buildHut,
@@ -415,6 +441,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       hydrated,
       offlineProgressSummary,
       dismissOfflineProgressSummary,
+      resetGame,
       addResource,
       unlockManager,
       buildHut,
