@@ -29,7 +29,7 @@ export function BuildingsPanel() {
         <div>
           <h2 className="text-xl font-semibold text-violet-100">Housing</h2>
           <p className="text-sm text-violet-200/80">
-            People require homes. Build huts to unlock Gatherers and Collectors.
+            Unlocked people consume housing. Most roles need 1 housing, while special entities do not.
           </p>
           <p className="mt-2 text-sm font-medium text-violet-100">
             Capacity: {housedPeople} / {housingCapacity}

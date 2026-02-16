@@ -6,6 +6,7 @@ export type PersistedGameState = {
   unlockedManagerIds: ManagerId[];
   discoveredManagerIds: ManagerId[];
   slots: ManagerSlot[];
+  lastActiveAt: number;
 };
 
 const STORAGE_KEY = "probably-a-wizard-mvp-save-v3";
