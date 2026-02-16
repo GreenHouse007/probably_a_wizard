@@ -1,34 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { GameShell } from "@/components/game/game-shell";
 
 export const metadata: Metadata = {
-  title: "Probably A Wizard",
-  description: "A magical game where you're probably a wizard",
+  title: "Probably A Wizard - MVP",
+  description: "Idle + alchemy style manager discovery game",
   manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Probably A Wizard",
-  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#6c3fc5",
+  themeColor: "#15102a",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export default function RootLayout({
@@ -38,10 +21,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body>
+        <GameShell>{children}</GameShell>
       </body>
     </html>
   );
