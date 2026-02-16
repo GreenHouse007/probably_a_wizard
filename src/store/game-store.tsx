@@ -18,6 +18,9 @@ import {
   HUT_CAPACITY,
   HUT_COST,
   PERSON_MANAGER_IDS,
+  WORKSHOP_UNLOCK_HUTS,
+  getSticksPpsMultiplier,
+  getWorkshopCost,
   makeCombinationKey,
   type Buildings,
   type Inventory,
@@ -37,10 +40,13 @@ export type GameState = {
   buildings: Buildings;
   housingCapacity: number;
   housedPeople: number;
+  resourceMultipliers: Record<ResourceType, number>;
   hydrated: boolean;
   addResource: (resource: ResourceType, amount?: number) => void;
   unlockManager: (managerId: ManagerId) => { ok: boolean; reason?: string };
   buildHut: () => { ok: boolean; reason?: string };
+  buildWorkshop: () => { ok: boolean; reason?: string };
+  getEffectivePps: (managerId: ManagerId, resourceType: ResourceType) => number;
   assignManagerToSlot: (slotId: string, managerId: ManagerId | null) => { ok: boolean; reason?: string };
   attemptCombine: (a: ManagerId, b: ManagerId) => { ok: boolean; discoveredId?: ManagerId; alreadyKnown?: boolean };
 };
@@ -69,6 +75,15 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
     [managers],
   );
   const housingCapacity = buildings.huts * HUT_CAPACITY;
+  const resourceMultipliers = useMemo<Record<ResourceType, number>>(
+    () => ({
+      food: 1,
+      water: 1,
+      sticks: getSticksPpsMultiplier(buildings.workshops),
+      stone: 1,
+    }),
+    [buildings.workshops],
+  );
 
   useEffect(() => {
     if (hasLoadedRef.current) {
@@ -84,7 +99,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
 
       setInventory(saved.inventory);
       if (saved.buildings) {
-        setBuildings(saved.buildings);
+        setBuildings({ ...DEFAULT_BUILDINGS, ...saved.buildings });
       }
       setManagers((current) => {
         const next = { ...current };
@@ -198,6 +213,48 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
     [housedPeople, housingCapacity, inventory, managers],
   );
 
+  const buildWorkshop = useCallback(() => {
+    if (buildings.huts < WORKSHOP_UNLOCK_HUTS) {
+      return {
+        ok: false,
+        reason: `Build at least ${WORKSHOP_UNLOCK_HUTS} hut to unlock workshops.`,
+      };
+    }
+
+    const cost = getWorkshopCost(buildings.workshops);
+
+    for (const [resource, amount] of Object.entries(cost)) {
+      const resourceKey = resource as ResourceType;
+      if ((amount ?? 0) > inventory[resourceKey]) {
+        return { ok: false, reason: "Not enough resources to build a workshop." };
+      }
+    }
+
+    setInventory((current) => {
+      const next = { ...current };
+      for (const [resource, amount] of Object.entries(cost)) {
+        const key = resource as ResourceType;
+        next[key] = Math.max(0, current[key] - (amount ?? 0));
+      }
+      return next;
+    });
+
+    setBuildings((current) => ({ ...current, workshops: current.workshops + 1 }));
+    return { ok: true };
+  }, [buildings.huts, buildings.workshops, inventory]);
+
+  const getEffectivePps = useCallback(
+    (managerId: ManagerId, resourceType: ResourceType) => {
+      const manager = managers[managerId];
+      if (!manager) {
+        return 0;
+      }
+
+      return Number((manager.pps * resourceMultipliers[resourceType]).toFixed(3));
+    },
+    [managers, resourceMultipliers],
+  );
+
   const assignManagerToSlot = useCallback(
     (slotId: string, managerId: ManagerId | null) => {
       if (managerId) {
@@ -262,10 +319,13 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       buildings,
       housedPeople,
       housingCapacity,
+      resourceMultipliers,
       hydrated,
       addResource,
       unlockManager,
       buildHut,
+      buildWorkshop,
+      getEffectivePps,
       assignManagerToSlot,
       attemptCombine,
     }),
@@ -277,10 +337,13 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       buildings,
       housedPeople,
       housingCapacity,
+      resourceMultipliers,
       hydrated,
       addResource,
       unlockManager,
       buildHut,
+      buildWorkshop,
+      getEffectivePps,
       assignManagerToSlot,
       attemptCombine,
     ],

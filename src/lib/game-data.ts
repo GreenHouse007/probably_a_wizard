@@ -36,6 +36,7 @@ export type ManagerSlot = {
 
 export type Buildings = {
   huts: number;
+  workshops: number;
 };
 
 export const RESOURCE_LABELS: Record<ResourceType, string> = {
@@ -54,6 +55,7 @@ export const DEFAULT_INVENTORY: Inventory = {
 
 export const DEFAULT_BUILDINGS: Buildings = {
   huts: 0,
+  workshops: 0,
 };
 
 export const HUT_COST: Partial<Inventory> = {
@@ -62,6 +64,26 @@ export const HUT_COST: Partial<Inventory> = {
 };
 
 export const HUT_CAPACITY = 2;
+
+export const WORKSHOP_UNLOCK_HUTS = 1;
+export const WORKSHOP_BASE_COST: Partial<Inventory> = {
+  sticks: 20,
+  stone: 10,
+};
+export const WORKSHOP_COST_GROWTH = 1.4;
+export const WORKSHOP_STICKS_PPS_BONUS = 0.12;
+
+export function getWorkshopCost(workshopsBuilt: number): Partial<Inventory> {
+  const scale = WORKSHOP_COST_GROWTH ** workshopsBuilt;
+  return {
+    sticks: Math.ceil((WORKSHOP_BASE_COST.sticks ?? 0) * scale),
+    stone: Math.ceil((WORKSHOP_BASE_COST.stone ?? 0) * scale),
+  };
+}
+
+export function getSticksPpsMultiplier(workshopsBuilt: number): number {
+  return Number((1 + WORKSHOP_STICKS_PPS_BONUS) ** workshopsBuilt);
+}
 
 export const MANAGER_DEFINITIONS: Record<ManagerId, Omit<ManagerDefinition, "unlocked">> = {
   "basic-gatherer": { id: "basic-gatherer", name: "Basic Gatherer", pps: 0.5 },
