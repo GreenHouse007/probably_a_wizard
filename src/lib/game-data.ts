@@ -59,20 +59,29 @@ export const DEFAULT_BUILDINGS: Buildings = {
   workshops: 0,
 };
 
-export const HUT_COST: Partial<Inventory> = {
+export const HUT_BASE_COST: Partial<Inventory> = {
   sticks: 12,
   stone: 8,
 };
+export const HUT_COST_GROWTH = 2;
 
 export const HUT_CAPACITY = 2;
 
 export const WORKSHOP_UNLOCK_HUTS = 1;
 export const WORKSHOP_BASE_COST: Partial<Inventory> = {
-  sticks: 20,
-  stone: 10,
+  sticks: 30,
+  stone: 18,
 };
-export const WORKSHOP_COST_GROWTH = 1.4;
+export const WORKSHOP_COST_GROWTH = 2;
 export const WORKSHOP_STICKS_PPS_BONUS = 0.12;
+
+export function getHutCost(hutsBuilt: number): Partial<Inventory> {
+  const scale = HUT_COST_GROWTH ** hutsBuilt;
+  return {
+    sticks: Math.ceil((HUT_BASE_COST.sticks ?? 0) * scale),
+    stone: Math.ceil((HUT_BASE_COST.stone ?? 0) * scale),
+  };
+}
 
 export function getWorkshopCost(workshopsBuilt: number): Partial<Inventory> {
   const scale = WORKSHOP_COST_GROWTH ** workshopsBuilt;
@@ -110,6 +119,26 @@ export const UNLOCK_COSTS: Partial<Record<ManagerId, Partial<Inventory>>> = {
   gatherer: { food: 10, water: 5 },
   collector: { sticks: 10, stone: 10 },
 };
+
+export function getManagerUnlockCost(managerId: ManagerId): Partial<Inventory> | null {
+  const staticCost = UNLOCK_COSTS[managerId];
+  if (staticCost) {
+    return staticCost;
+  }
+
+  const manager = MANAGER_DEFINITIONS[managerId];
+  if (!manager || managerId === "basic-gatherer") {
+    return null;
+  }
+
+  const base = Math.ceil(manager.pps * 12);
+  return {
+    food: base + manager.housingCost * 4,
+    water: Math.ceil(base * 0.8) + manager.housingCost * 3,
+    sticks: Math.ceil(base * 0.6),
+    stone: Math.ceil(base * 0.5),
+  };
+}
 
 const comboKey = (a: ManagerId, b: ManagerId) => [a, b].sort().join("+");
 
@@ -151,6 +180,8 @@ export const DEFAULT_MANAGERS: Record<ManagerId, ManagerDefinition> = {
   trailblazer: { ...MANAGER_DEFINITIONS.trailblazer, unlocked: false },
   excavator: { ...MANAGER_DEFINITIONS.excavator, unlocked: false },
 };
+
+export const INITIAL_DISCOVERED_MANAGER_IDS: ManagerId[] = ["basic-gatherer", "gatherer", "collector"];
 
 export const DEFAULT_SLOTS: ManagerSlot[] = [
   { id: "slot-food", resourceType: "food", managerId: null },
