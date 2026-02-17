@@ -8,6 +8,7 @@ import { useGameStore } from "@/store/game-store";
 const links = [
   { href: "/", label: "Resources" },
   { href: "/characters", label: "Characters" },
+  { href: "/discovery", label: "Discover" },
   { href: "/buildings", label: "Buildings" },
 ];
 

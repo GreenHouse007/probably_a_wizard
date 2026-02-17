@@ -2,13 +2,14 @@
 
 import {
   HUT_CAPACITY,
-  HUT_COST,
   RESOURCE_LABELS,
   WORKSHOP_UNLOCK_HUTS,
+  getHutCost,
   getWorkshopCost,
 } from "@/lib/game-data";
 import { useGameStore } from "@/store/game-store";
-import { HutIcon, SparklesGraphic } from "@/components/ui/icons";
+import { CityOverview } from "@/components/city/city-overview";
+import { HutIcon } from "@/components/ui/icons";
 
 export function BuildingsPanel() {
   const {
@@ -20,11 +21,12 @@ export function BuildingsPanel() {
     buildWorkshop,
     resourceMultipliers,
   } = useGameStore();
+  const hutCost = getHutCost(buildings.huts);
   const workshopCost = getWorkshopCost(buildings.workshops);
 
   return (
     <section className="space-y-4 rounded-2xl border border-violet-300/25 bg-violet-900/25 p-5">
-      <SparklesGraphic />
+      <CityOverview />
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-violet-300/20 bg-violet-950/30 p-4">
         <div>
           <h2 className="text-xl font-semibold text-violet-100">Housing</h2>
@@ -45,7 +47,7 @@ export function BuildingsPanel() {
         </div>
         <p className="text-sm text-amber-100/90">Built: {buildings.huts}</p>
         <p className="mt-1 text-sm text-amber-100/90">
-          Cost: {HUT_COST.sticks} {RESOURCE_LABELS.sticks} + {HUT_COST.stone} {RESOURCE_LABELS.stone}
+          Cost: {hutCost.sticks} {RESOURCE_LABELS.sticks} + {hutCost.stone} {RESOURCE_LABELS.stone}
         </p>
         <p className="mb-3 mt-1 text-xs text-amber-200/80">
           You have: {Math.floor(inventory.sticks)} {RESOURCE_LABELS.sticks} / {Math.floor(inventory.stone)}{" "}

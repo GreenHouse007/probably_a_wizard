@@ -16,8 +16,10 @@ import {
   DEFAULT_MANAGERS,
   DEFAULT_SLOTS,
   HUT_CAPACITY,
-  HUT_COST,
+  INITIAL_DISCOVERED_MANAGER_IDS,
   WORKSHOP_UNLOCK_HUTS,
+  getHutCost,
+  getManagerUnlockCost,
   getSticksPpsMultiplier,
   getWorkshopCost,
   makeCombinationKey,
@@ -27,7 +29,6 @@ import {
   type ManagerId,
   type ManagerSlot,
   type ResourceType,
-  UNLOCK_COSTS,
 } from "@/lib/game-data";
 import { gamePersistence } from "@/lib/persistence";
 
@@ -63,9 +64,7 @@ export type GameState = {
 const GameStoreContext = createContext<GameState | null>(null);
 
 function getInitialDiscovered() {
-  return (Object.values(DEFAULT_MANAGERS)
-    .filter((manager) => manager.unlocked)
-    .map((manager) => manager.id) as ManagerId[]).sort();
+  return [...INITIAL_DISCOVERED_MANAGER_IDS].sort();
 }
 
 function getDefaultManagers() {
@@ -176,7 +175,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
         setBuildings(saved.buildings);
       }
       setManagers(restoredManagers);
-      setDiscoveredManagerIds(saved.discoveredManagerIds);
+      setDiscoveredManagerIds(saved.discoveredManagerIds.length > 0 ? saved.discoveredManagerIds : getInitialDiscovered());
 
       setSlots(restoredSlots);
 
@@ -239,28 +238,37 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const buildHut = useCallback(() => {
-    for (const [resource, amount] of Object.entries(HUT_COST)) {
+    const cost = getHutCost(buildings.huts);
+
+    for (const [resource, amount] of Object.entries(cost)) {
       const resourceKey = resource as ResourceType;
       if ((amount ?? 0) > inventory[resourceKey]) {
         return { ok: false, reason: "Not enough resources to build a hut." };
       }
     }
 
-    setInventory((current) => ({
-      ...current,
-      sticks: Math.max(0, current.sticks - (HUT_COST.sticks ?? 0)),
-      stone: Math.max(0, current.stone - (HUT_COST.stone ?? 0)),
-    }));
+    setInventory((current) => {
+      const next = { ...current };
+      for (const [resource, amount] of Object.entries(cost)) {
+        const key = resource as ResourceType;
+        next[key] = Math.max(0, current[key] - (amount ?? 0));
+      }
+      return next;
+    });
 
     setBuildings((current) => ({ ...current, huts: current.huts + 1 }));
     return { ok: true };
-  }, [inventory]);
+  }, [buildings.huts, inventory]);
 
   const unlockManager = useCallback(
     (managerId: ManagerId) => {
-      const costs = UNLOCK_COSTS[managerId];
+      const costs = getManagerUnlockCost(managerId);
       if (!costs) {
         return { ok: false, reason: "This manager cannot be unlocked directly." };
+      }
+
+      if (!discoveredManagerIds.includes(managerId)) {
+        return { ok: false, reason: "Discover this manager first in the Discover tab." };
       }
 
       const manager = managers[managerId];
@@ -307,7 +315,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
 
       return { ok: true };
     },
-    [housedPeople, housingCapacity, inventory, managers],
+    [discoveredManagerIds, housedPeople, housingCapacity, inventory, managers],
   );
 
   const buildWorkshop = useCallback(() => {
@@ -391,14 +399,6 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       if (discoveredManagerIds.includes(result)) {
         return { ok: true, discoveredId: result, alreadyKnown: true };
       }
-
-      setManagers((current) => ({
-        ...current,
-        [result]: {
-          ...current[result],
-          unlocked: true,
-        },
-      }));
 
       setDiscoveredManagerIds((current) => [...current, result]);
 
