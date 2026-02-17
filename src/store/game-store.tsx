@@ -15,13 +15,23 @@ import {
   DEFAULT_INVENTORY,
   DEFAULT_MANAGERS,
   DEFAULT_SLOTS,
-  HUT_CAPACITY,
   INITIAL_DISCOVERED_MANAGER_IDS,
-  WORKSHOP_UNLOCK_HUTS,
-  getHutCost,
+  RESOURCE_TYPES,
+  getApartmentUpgradeCost,
+  getHousingCapacity,
+  getHouseCost,
+  getLibraryBuildCost,
+  getLibraryUpgradeCost,
+  getLumberMillBuildCost,
+  getLumberMillUpgradeCost,
+  getManagerRequirementError,
   getManagerUnlockCost,
-  getSticksPpsMultiplier,
-  getWorkshopCost,
+  getMineBuildCost,
+  getMineUpgradeCost,
+  getQuarryBuildCost,
+  getQuarryUpgradeCost,
+  getResourceMultiplier,
+  getUnlockedResources,
   makeCombinationKey,
   type Buildings,
   type Inventory,
@@ -48,14 +58,18 @@ export type GameState = {
   housingCapacity: number;
   housedPeople: number;
   resourceMultipliers: Record<ResourceType, number>;
+  unlockedResources: ResourceType[];
   hydrated: boolean;
   offlineProgressSummary: OfflineProgressSummary | null;
   dismissOfflineProgressSummary: () => void;
   resetGame: () => Promise<void>;
   addResource: (resource: ResourceType, amount?: number) => void;
   unlockManager: (managerId: ManagerId) => { ok: boolean; reason?: string };
-  buildHut: () => { ok: boolean; reason?: string };
-  buildWorkshop: () => { ok: boolean; reason?: string };
+  buildHouseOrApartment: () => { ok: boolean; reason?: string };
+  buildOrUpgradeLumberMill: () => { ok: boolean; reason?: string };
+  buildOrUpgradeQuarry: () => { ok: boolean; reason?: string };
+  buildOrUpgradeMine: () => { ok: boolean; reason?: string };
+  buildOrUpgradeLibrary: () => { ok: boolean; reason?: string };
   getEffectivePps: (managerId: ManagerId, resourceType: ResourceType) => number;
   assignManagerToSlot: (slotId: string, managerId: ManagerId | null) => { ok: boolean; reason?: string };
   attemptCombine: (a: ManagerId, b: ManagerId) => { ok: boolean; discoveredId?: ManagerId; alreadyKnown?: boolean };
@@ -63,16 +77,25 @@ export type GameState = {
 
 const GameStoreContext = createContext<GameState | null>(null);
 
+const canAfford = (inventory: Inventory, costs: Partial<Inventory>) =>
+  Object.entries(costs).every(([resource, amount]) => inventory[resource as ResourceType] >= (amount ?? 0));
+
+const spend = (inventory: Inventory, costs: Partial<Inventory>) => {
+  const next = { ...inventory };
+  for (const [resource, amount] of Object.entries(costs)) {
+    const key = resource as ResourceType;
+    next[key] = Math.max(0, next[key] - (amount ?? 0));
+  }
+  return next;
+};
+
 function getInitialDiscovered() {
   return [...INITIAL_DISCOVERED_MANAGER_IDS].sort();
 }
 
 function getDefaultManagers() {
   return Object.fromEntries(
-    Object.entries(DEFAULT_MANAGERS).map(([managerId, manager]) => [
-      managerId,
-      { ...manager },
-    ]),
+    Object.entries(DEFAULT_MANAGERS).map(([managerId, manager]) => [managerId, { ...manager }]),
   ) as Record<ManagerId, ManagerDefinition>;
 }
 
@@ -84,112 +107,68 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
   const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
   const [buildings, setBuildings] = useState(DEFAULT_BUILDINGS);
   const [managers, setManagers] = useState(getDefaultManagers);
-  const [discoveredManagerIds, setDiscoveredManagerIds] = useState<ManagerId[]>(
-    getInitialDiscovered(),
-  );
+  const [discoveredManagerIds, setDiscoveredManagerIds] = useState<ManagerId[]>(getInitialDiscovered());
   const [slots, setSlots] = useState(getDefaultSlots);
   const [hydrated, setHydrated] = useState(false);
-  const [offlineProgressSummary, setOfflineProgressSummary] =
-    useState<OfflineProgressSummary | null>(null);
+  const [offlineProgressSummary, setOfflineProgressSummary] = useState<OfflineProgressSummary | null>(null);
   const hasLoadedRef = useRef(false);
 
   const housedPeople = useMemo(
-    () =>
-      Object.values(managers).reduce(
-        (total, manager) => total + (manager.unlocked ? manager.housingCost : 0),
-        0,
-      ),
+    () => Object.values(managers).reduce((total, manager) => total + (manager.unlocked ? manager.housingCost : 0), 0),
     [managers],
   );
-  const housingCapacity = buildings.huts * HUT_CAPACITY;
+
+  const housingCapacity = useMemo(() => getHousingCapacity(buildings), [buildings]);
+
   const resourceMultipliers = useMemo<Record<ResourceType, number>>(
-    () => ({
-      food: 1,
-      water: 1,
-      sticks: getSticksPpsMultiplier(buildings.workshops),
-      stone: 1,
-    }),
-    [buildings.workshops],
+    () => Object.fromEntries(RESOURCE_TYPES.map((resource) => [resource, getResourceMultiplier(buildings, resource)])) as Record<ResourceType, number>,
+    [buildings],
   );
 
-  useEffect(() => {
-    if (hasLoadedRef.current) {
-      return;
-    }
+  const unlockedResources = useMemo(() => getUnlockedResources(buildings), [buildings]);
 
+  useEffect(() => {
+    if (hasLoadedRef.current) return;
     hasLoadedRef.current = true;
+
     void gamePersistence.load().then((saved) => {
       if (!saved) {
         setHydrated(true);
         return;
       }
 
-      const restoredSlots = saved.slots.length === 4 ? saved.slots : getDefaultSlots();
-
+      const restoredSlots = saved.slots.length === DEFAULT_SLOTS.length ? saved.slots : getDefaultSlots();
       const restoredManagers = getDefaultManagers();
       for (const managerId of saved.unlockedManagerIds) {
         const manager = restoredManagers[managerId];
-        if (manager) {
-          restoredManagers[managerId] = { ...manager, unlocked: true };
-        }
+        if (manager) restoredManagers[managerId] = { ...manager, unlocked: true };
       }
 
-      const elapsedSecondsRaw = saved.lastActiveAt
-        ? (Date.now() - saved.lastActiveAt) / 1000
-        : 0;
-      const elapsedSeconds = Math.max(
-        0,
-        Math.min(OFFLINE_GAIN_CAP_SECONDS, elapsedSecondsRaw),
-      );
-
+      const elapsedSeconds = Math.max(0, Math.min(OFFLINE_GAIN_CAP_SECONDS, saved.lastActiveAt ? (Date.now() - saved.lastActiveAt) / 1000 : 0));
       const gains: Partial<Inventory> = {};
       if (elapsedSeconds > 0) {
         for (const slot of restoredSlots) {
-          if (!slot.managerId) {
-            continue;
-          }
-
+          if (!slot.managerId) continue;
           const manager = restoredManagers[slot.managerId];
-          if (!manager || manager.pps <= 0) {
-            continue;
-          }
-
-          gains[slot.resourceType] =
-            (gains[slot.resourceType] ?? 0) + manager.pps * elapsedSeconds;
+          if (!manager) continue;
+          gains[slot.resourceType] = (gains[slot.resourceType] ?? 0) + manager.pps * elapsedSeconds;
         }
       }
 
-      const hasGains = Object.values(gains).some((amount) => (amount ?? 0) > 0);
-      const nextInventory = hasGains
-        ? {
-            ...saved.inventory,
-            food: Number((saved.inventory.food + (gains.food ?? 0)).toFixed(3)),
-            water: Number((saved.inventory.water + (gains.water ?? 0)).toFixed(3)),
-            sticks: Number((saved.inventory.sticks + (gains.sticks ?? 0)).toFixed(3)),
-            stone: Number((saved.inventory.stone + (gains.stone ?? 0)).toFixed(3)),
-          }
-        : saved.inventory;
+      const nextInventory = { ...DEFAULT_INVENTORY, ...saved.inventory };
+      for (const [resource, amount] of Object.entries(gains)) {
+        const key = resource as ResourceType;
+        nextInventory[key] = Number((nextInventory[key] + (amount ?? 0)).toFixed(3));
+      }
 
       setInventory(nextInventory);
-      if (saved.buildings) {
-        setBuildings(saved.buildings);
-      }
+      if (saved.buildings) setBuildings(saved.buildings);
       setManagers(restoredManagers);
       setDiscoveredManagerIds(saved.discoveredManagerIds.length > 0 ? saved.discoveredManagerIds : getInitialDiscovered());
-
       setSlots(restoredSlots);
 
-      if (hasGains) {
-        const roundedGains: Partial<Inventory> = {};
-        for (const [resource, amount] of Object.entries(gains)) {
-          const key = resource as keyof Inventory;
-          roundedGains[key] = Number((amount ?? 0).toFixed(3));
-        }
-
-        setOfflineProgressSummary({
-          elapsedSeconds,
-          gains: roundedGains,
-        });
+      if (Object.values(gains).some((amount) => (amount ?? 0) > 0)) {
+        setOfflineProgressSummary({ elapsedSeconds, gains });
       }
 
       setHydrated(true);
@@ -197,27 +176,12 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
-
-    const unlockedManagerIds = (Object.values(managers)
-      .filter((manager) => manager.unlocked)
-      .map((manager) => manager.id) as ManagerId[]).sort();
-
-    void gamePersistence.save({
-      inventory,
-      buildings,
-      unlockedManagerIds,
-      discoveredManagerIds,
-      slots,
-      lastActiveAt: Date.now(),
-    });
+    if (!hydrated) return;
+    const unlockedManagerIds = (Object.values(managers).filter((manager) => manager.unlocked).map((manager) => manager.id) as ManagerId[]).sort();
+    void gamePersistence.save({ inventory, buildings, unlockedManagerIds, discoveredManagerIds, slots, lastActiveAt: Date.now() });
   }, [hydrated, inventory, buildings, managers, discoveredManagerIds, slots]);
 
-  const dismissOfflineProgressSummary = useCallback(() => {
-    setOfflineProgressSummary(null);
-  }, []);
+  const dismissOfflineProgressSummary = useCallback(() => setOfflineProgressSummary(null), []);
 
   const resetGame = useCallback(async () => {
     await gamePersistence.clear();
@@ -230,238 +194,146 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true);
   }, []);
 
-  const addResource = useCallback((resource: ResourceType, amount = 1) => {
-    setInventory((current) => ({
-      ...current,
-      [resource]: Math.max(0, Number((current[resource] + amount).toFixed(3))),
-    }));
-  }, []);
-
-  const buildHut = useCallback(() => {
-    const cost = getHutCost(buildings.huts);
-
-    for (const [resource, amount] of Object.entries(cost)) {
-      const resourceKey = resource as ResourceType;
-      if ((amount ?? 0) > inventory[resourceKey]) {
-        return { ok: false, reason: "Not enough resources to build a hut." };
-      }
-    }
-
-    setInventory((current) => {
-      const next = { ...current };
-      for (const [resource, amount] of Object.entries(cost)) {
-        const key = resource as ResourceType;
-        next[key] = Math.max(0, current[key] - (amount ?? 0));
-      }
-      return next;
-    });
-
-    setBuildings((current) => ({ ...current, huts: current.huts + 1 }));
-    return { ok: true };
-  }, [buildings.huts, inventory]);
-
-  const unlockManager = useCallback(
-    (managerId: ManagerId) => {
-      const costs = getManagerUnlockCost(managerId);
-      if (!costs) {
-        return { ok: false, reason: "This manager cannot be unlocked directly." };
-      }
-
-      if (!discoveredManagerIds.includes(managerId)) {
-        return { ok: false, reason: "Discover this manager first in the Discover tab." };
-      }
-
-      const manager = managers[managerId];
-      if (!manager) {
-        return { ok: false, reason: "Unknown manager." };
-      }
-
-      if (manager.unlocked) {
-        return { ok: false, reason: "Manager already unlocked." };
-      }
-
-      const nextHousingTotal = housedPeople + manager.housingCost;
-      if (manager.housingCost > 0 && nextHousingTotal > housingCapacity) {
-        return {
-          ok: false,
-          reason: `Not enough housing for ${manager.name}. Needs ${manager.housingCost} housing (would be ${nextHousingTotal}/${housingCapacity}).`,
-        };
-      }
-
-      for (const [resource, amount] of Object.entries(costs)) {
-        const key = resource as ResourceType;
-        if ((amount ?? 0) > inventory[key]) {
-          return { ok: false, reason: "Not enough resources." };
-        }
-      }
-
-      setInventory((current) => {
-        const next = { ...current };
-        for (const [resource, amount] of Object.entries(costs)) {
-          const key = resource as ResourceType;
-          next[key] = Math.max(0, current[key] - (amount ?? 0));
-        }
-        return next;
-      });
-
-      setManagers((current) => ({
-        ...current,
-        [managerId]: { ...current[managerId], unlocked: true },
-      }));
-
-      setDiscoveredManagerIds((current) =>
-        current.includes(managerId) ? current : [...current, managerId],
-      );
-
-      return { ok: true };
+  const addResource = useCallback(
+    (resource: ResourceType, amount = 1) => {
+      if (!unlockedResources.includes(resource)) return;
+      setInventory((current) => ({ ...current, [resource]: Math.max(0, Number((current[resource] + amount).toFixed(3))) }));
     },
-    [discoveredManagerIds, housedPeople, housingCapacity, inventory, managers],
+    [unlockedResources],
   );
 
-  const buildWorkshop = useCallback(() => {
-    if (buildings.huts < WORKSHOP_UNLOCK_HUTS) {
-      return {
-        ok: false,
-        reason: `Build at least ${WORKSHOP_UNLOCK_HUTS} hut to unlock workshops.`,
-      };
+  const unlockManager = useCallback((managerId: ManagerId) => {
+    if (!discoveredManagerIds.includes(managerId)) return { ok: false, reason: "Discover this character first." };
+    const manager = managers[managerId];
+    if (!manager) return { ok: false, reason: "Unknown character." };
+    if (manager.unlocked) return { ok: false, reason: "Character already unlocked." };
+
+    const requirementError = getManagerRequirementError(managerId, buildings);
+    if (requirementError) return { ok: false, reason: requirementError };
+
+    const costs = getManagerUnlockCost(managerId);
+    if (!canAfford(inventory, costs)) return { ok: false, reason: "Not enough resources." };
+
+    if (housedPeople + manager.housingCost > housingCapacity) {
+      return { ok: false, reason: `Not enough housing (${housedPeople}/${housingCapacity}).` };
     }
 
-    const cost = getWorkshopCost(buildings.workshops);
-
-    for (const [resource, amount] of Object.entries(cost)) {
-      const resourceKey = resource as ResourceType;
-      if ((amount ?? 0) > inventory[resourceKey]) {
-        return { ok: false, reason: "Not enough resources to build a workshop." };
-      }
-    }
-
-    setInventory((current) => {
-      const next = { ...current };
-      for (const [resource, amount] of Object.entries(cost)) {
-        const key = resource as ResourceType;
-        next[key] = Math.max(0, current[key] - (amount ?? 0));
-      }
-      return next;
-    });
-
-    setBuildings((current) => ({ ...current, workshops: current.workshops + 1 }));
+    setInventory((current) => spend(current, costs));
+    setManagers((current) => ({ ...current, [managerId]: { ...current[managerId], unlocked: true } }));
     return { ok: true };
-  }, [buildings.huts, buildings.workshops, inventory]);
+  }, [buildings, discoveredManagerIds, housedPeople, housingCapacity, inventory, managers]);
+
+  const buildHouseOrApartment = useCallback(() => {
+    const houseCost = getHouseCost(buildings.houses);
+    if (houseCost) {
+      if (!canAfford(inventory, houseCost)) return { ok: false, reason: "Not enough resources to build a house." };
+      setInventory((current) => spend(current, houseCost));
+      setBuildings((current) => ({ ...current, houses: current.houses + 1 }));
+      return { ok: true };
+    }
+
+    const apartmentCost = getApartmentUpgradeCost();
+    if (!canAfford(inventory, apartmentCost)) return { ok: false, reason: "Not enough resources for apartment upgrade." };
+    setInventory((current) => spend(current, apartmentCost));
+    setBuildings((current) => ({ ...current, apartments: current.apartments + 1 }));
+    return { ok: true };
+  }, [buildings.houses, inventory]);
+
+  const buildOrUpgradeLumberMill = useCallback(() => {
+    const cost = buildings.lumberMillLevel === 0 ? getLumberMillBuildCost() : getLumberMillUpgradeCost(buildings.lumberMillLevel);
+    if (!cost) return { ok: false, reason: "Lumber Mill is fully upgraded." };
+    if (!canAfford(inventory, cost)) return { ok: false, reason: "Not enough resources for Lumber Mill." };
+    setInventory((current) => spend(current, cost));
+    setBuildings((current) => ({ ...current, lumberMillLevel: current.lumberMillLevel + 1 }));
+    return { ok: true };
+  }, [buildings.lumberMillLevel, inventory]);
+
+  const buildOrUpgradeQuarry = useCallback(() => {
+    const cost = buildings.quarryLevel === 0 ? getQuarryBuildCost() : getQuarryUpgradeCost(buildings.quarryLevel);
+    if (!cost) return { ok: false, reason: "Quarry is fully upgraded." };
+    if (!canAfford(inventory, cost)) return { ok: false, reason: "Not enough resources for Quarry." };
+    setInventory((current) => spend(current, cost));
+    setBuildings((current) => ({ ...current, quarryLevel: current.quarryLevel + 1 }));
+    return { ok: true };
+  }, [buildings.quarryLevel, inventory]);
+
+  const buildOrUpgradeMine = useCallback(() => {
+    if (buildings.quarryLevel === 0) return { ok: false, reason: "Build Quarry first to unlock Ore." };
+    const cost = buildings.mineLevel === 0 ? getMineBuildCost() : getMineUpgradeCost(buildings.mineLevel);
+    if (!cost) return { ok: false, reason: "Mine is fully upgraded." };
+    if (!canAfford(inventory, cost)) return { ok: false, reason: "Not enough resources for Mine." };
+    setInventory((current) => spend(current, cost));
+    setBuildings((current) => ({ ...current, mineLevel: current.mineLevel + 1 }));
+    return { ok: true };
+  }, [buildings.mineLevel, buildings.quarryLevel, inventory]);
+
+  const buildOrUpgradeLibrary = useCallback(() => {
+    if (buildings.mineLevel === 0) return { ok: false, reason: "Build Mine first to unlock Gold." };
+    const cost = buildings.libraryLevel === 0 ? getLibraryBuildCost() : getLibraryUpgradeCost(buildings.libraryLevel);
+    if (!cost) return { ok: false, reason: "Library is fully upgraded." };
+    if (!canAfford(inventory, cost)) return { ok: false, reason: "Not enough resources for Library." };
+    setInventory((current) => spend(current, cost));
+    setBuildings((current) => ({ ...current, libraryLevel: current.libraryLevel + 1 }));
+    return { ok: true };
+  }, [buildings.libraryLevel, buildings.mineLevel, inventory]);
 
   const getEffectivePps = useCallback(
     (managerId: ManagerId, resourceType: ResourceType) => {
       const manager = managers[managerId];
-      if (!manager) {
-        return 0;
-      }
-
+      if (!manager) return 0;
       return Number((manager.pps * resourceMultipliers[resourceType]).toFixed(3));
     },
     [managers, resourceMultipliers],
   );
 
-  const assignManagerToSlot = useCallback(
-    (slotId: string, managerId: ManagerId | null) => {
-      if (managerId) {
-        const assigned = slots.find(
-          (slot) => slot.managerId === managerId && slot.id !== slotId,
-        );
+  const assignManagerToSlot = useCallback((slotId: string, managerId: ManagerId | null) => {
+    if (managerId && !managers[managerId]?.unlocked) return { ok: false, reason: "Character is not unlocked." };
+    if (managerId && slots.some((slot) => slot.managerId === managerId && slot.id !== slotId)) {
+      return { ok: false, reason: "Character already assigned to another slot." };
+    }
+    setSlots((current) => current.map((slot) => (slot.id === slotId ? { ...slot, managerId } : slot)));
+    return { ok: true };
+  }, [managers, slots]);
 
-        if (assigned) {
-          return { ok: false, reason: "Manager already assigned to another slot." };
-        }
-      }
+  const attemptCombine = useCallback((a: ManagerId, b: ManagerId) => {
+    const result = COMBINATION_MAP[makeCombinationKey(a, b)];
+    if (!result) return { ok: false };
+    if (discoveredManagerIds.includes(result)) return { ok: true, discoveredId: result, alreadyKnown: true };
+    setDiscoveredManagerIds((current) => [...current, result].sort());
+    return { ok: true, discoveredId: result, alreadyKnown: false };
+  }, [discoveredManagerIds]);
 
-      setSlots((current) =>
-        current.map((slot) =>
-          slot.id === slotId
-            ? {
-                ...slot,
-                managerId,
-              }
-            : slot,
-        ),
-      );
-
-      return { ok: true };
-    },
-    [slots],
-  );
-
-  const attemptCombine = useCallback(
-    (a: ManagerId, b: ManagerId) => {
-      const result = COMBINATION_MAP[makeCombinationKey(a, b)];
-
-      if (!result) {
-        return { ok: false };
-      }
-
-      if (discoveredManagerIds.includes(result)) {
-        return { ok: true, discoveredId: result, alreadyKnown: true };
-      }
-
-      setDiscoveredManagerIds((current) => [...current, result]);
-
-      return { ok: true, discoveredId: result, alreadyKnown: false };
-    },
-    [discoveredManagerIds],
-  );
-
-  const value = useMemo(
-    () => ({
-      inventory,
-      managers,
-      discoveredManagerIds,
-      slots,
-      buildings,
-      housedPeople,
-      housingCapacity,
-      resourceMultipliers,
-      hydrated,
-      offlineProgressSummary,
-      dismissOfflineProgressSummary,
-      resetGame,
-      addResource,
-      unlockManager,
-      buildHut,
-      buildWorkshop,
-      getEffectivePps,
-      assignManagerToSlot,
-      attemptCombine,
-    }),
-    [
-      inventory,
-      managers,
-      discoveredManagerIds,
-      slots,
-      buildings,
-      housedPeople,
-      housingCapacity,
-      resourceMultipliers,
-      hydrated,
-      offlineProgressSummary,
-      dismissOfflineProgressSummary,
-      resetGame,
-      addResource,
-      unlockManager,
-      buildHut,
-      buildWorkshop,
-      getEffectivePps,
-      assignManagerToSlot,
-      attemptCombine,
-    ],
-  );
+  const value = useMemo(() => ({
+    inventory,
+    managers,
+    discoveredManagerIds,
+    slots,
+    buildings,
+    housedPeople,
+    housingCapacity,
+    resourceMultipliers,
+    unlockedResources,
+    hydrated,
+    offlineProgressSummary,
+    dismissOfflineProgressSummary,
+    resetGame,
+    addResource,
+    unlockManager,
+    buildHouseOrApartment,
+    buildOrUpgradeLumberMill,
+    buildOrUpgradeQuarry,
+    buildOrUpgradeMine,
+    buildOrUpgradeLibrary,
+    getEffectivePps,
+    assignManagerToSlot,
+    attemptCombine,
+  }), [inventory, managers, discoveredManagerIds, slots, buildings, housedPeople, housingCapacity, resourceMultipliers, unlockedResources, hydrated, offlineProgressSummary, dismissOfflineProgressSummary, resetGame, addResource, unlockManager, buildHouseOrApartment, buildOrUpgradeLumberMill, buildOrUpgradeQuarry, buildOrUpgradeMine, buildOrUpgradeLibrary, getEffectivePps, assignManagerToSlot, attemptCombine]);
 
   return <GameStoreContext.Provider value={value}>{children}</GameStoreContext.Provider>;
 }
 
-
 export function useGameStore() {
   const context = useContext(GameStoreContext);
-
-  if (!context) {
-    throw new Error("useGameStore must be used within GameStoreProvider");
-  }
-
+  if (!context) throw new Error("useGameStore must be used within GameStoreProvider");
   return context;
 }

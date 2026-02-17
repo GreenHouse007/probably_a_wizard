@@ -1,15 +1,29 @@
 "use client";
 
+import type { ReactNode } from "react";
 import {
-  HUT_CAPACITY,
   RESOURCE_LABELS,
-  WORKSHOP_UNLOCK_HUTS,
-  getHutCost,
-  getWorkshopCost,
+  getApartmentUpgradeCost,
+  getHouseCost,
+  getLibraryBuildCost,
+  getLibraryUpgradeCost,
+  getLumberMillBuildCost,
+  getLumberMillUpgradeCost,
+  getMineBuildCost,
+  getMineUpgradeCost,
+  getQuarryBuildCost,
+  getQuarryUpgradeCost,
 } from "@/lib/game-data";
 import { useGameStore } from "@/store/game-store";
 import { CityOverview } from "@/components/city/city-overview";
-import { HutIcon } from "@/components/ui/icons";
+import { BuildingIcon } from "@/components/ui/icons";
+
+const formatCost = (cost: Record<string, number> | Partial<Record<string, number>> | null) =>
+  cost
+    ? Object.entries(cost)
+        .map(([resource, amount]) => `${amount} ${RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}`)
+        .join(" + ")
+    : "Max level reached";
 
 export function BuildingsPanel() {
   const {
@@ -17,84 +31,114 @@ export function BuildingsPanel() {
     buildings,
     housedPeople,
     housingCapacity,
-    buildHut,
-    buildWorkshop,
-    resourceMultipliers,
+    buildHouseOrApartment,
+    buildOrUpgradeLumberMill,
+    buildOrUpgradeQuarry,
+    buildOrUpgradeMine,
+    buildOrUpgradeLibrary,
   } = useGameStore();
-  const hutCost = getHutCost(buildings.huts);
-  const workshopCost = getWorkshopCost(buildings.workshops);
+
+  const housingCost = getHouseCost(buildings.houses) ?? getApartmentUpgradeCost();
+  const lumberCost = buildings.lumberMillLevel === 0 ? getLumberMillBuildCost() : getLumberMillUpgradeCost(buildings.lumberMillLevel);
+  const quarryCost = buildings.quarryLevel === 0 ? getQuarryBuildCost() : getQuarryUpgradeCost(buildings.quarryLevel);
+  const mineCost = buildings.mineLevel === 0 ? getMineBuildCost() : getMineUpgradeCost(buildings.mineLevel);
+  const libraryCost = buildings.libraryLevel === 0 ? getLibraryBuildCost() : getLibraryUpgradeCost(buildings.libraryLevel);
 
   return (
     <section className="space-y-4 rounded-2xl border border-violet-300/25 bg-violet-900/25 p-5">
       <CityOverview />
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-violet-300/20 bg-violet-950/30 p-4">
-        <div>
-          <h2 className="text-xl font-semibold text-violet-100">Housing</h2>
-          <p className="text-sm text-violet-200/80">
-            Unlocked people consume housing. Most roles need 1 housing, while special entities do not.
-          </p>
-          <p className="mt-2 text-sm font-medium text-violet-100">
-            Capacity: {housedPeople} / {housingCapacity}
-          </p>
-        </div>
-        <HutIcon />
+      <div className="rounded-xl border border-violet-300/20 bg-violet-950/30 p-4 text-sm text-violet-100">
+        Capacity: {housedPeople} / {housingCapacity}
       </div>
 
-      <div className="rounded-xl border border-amber-300/30 bg-amber-900/20 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-amber-100">Hut</h3>
-          <span className="text-xs text-amber-200">+{HUT_CAPACITY} housing</span>
-        </div>
-        <p className="text-sm text-amber-100/90">Built: {buildings.huts}</p>
-        <p className="mt-1 text-sm text-amber-100/90">
-          Cost: {hutCost.sticks} {RESOURCE_LABELS.sticks} + {hutCost.stone} {RESOURCE_LABELS.stone}
-        </p>
-        <p className="mb-3 mt-1 text-xs text-amber-200/80">
-          You have: {Math.floor(inventory.sticks)} {RESOURCE_LABELS.sticks} / {Math.floor(inventory.stone)}{" "}
-          {RESOURCE_LABELS.stone}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            const result = buildHut();
-            if (!result.ok) {
-              window.alert(result.reason);
-            }
-          }}
-          className="rounded-lg bg-amber-300 px-4 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-200"
-        >
-          Build Hut
-        </button>
+      <div className="grid gap-3 md:grid-cols-2">
+        <BuildingCard
+          icon={<BuildingIcon buildingId="housing" />}
+          title={buildings.houses < 4 ? `Housing (House ${buildings.houses + 1}/4)` : "Housing (Apartment Upgrade)"}
+          subtitle={buildings.houses < 4 ? "Build up to 4 houses, then upgrade apartments (+4 capacity)." : "Apartment upgrades are unlimited and add +4 capacity."}
+          status={`Houses: ${buildings.houses} · Apartments: ${buildings.apartments}`}
+          costLabel={formatCost(housingCost)}
+          buttonLabel={buildings.houses < 4 ? "Build House" : "Upgrade Apartment"}
+          onClick={buildHouseOrApartment}
+        />
+        <BuildingCard
+          icon={<BuildingIcon buildingId="lumber-mill" />}
+          title="Lumber Mill"
+          subtitle="Unlocks Logs resource. Upgrades improve log production speed."
+          status={`Level: ${buildings.lumberMillLevel}/4`}
+          costLabel={formatCost(lumberCost)}
+          buttonLabel={buildings.lumberMillLevel === 0 ? "Build Lumber Mill" : "Upgrade Lumber Mill"}
+          onClick={buildOrUpgradeLumberMill}
+        />
+        <BuildingCard
+          icon={<BuildingIcon buildingId="quarry" />}
+          title="Quarry"
+          subtitle="Unlocks Ore resource."
+          status={`Level: ${buildings.quarryLevel}/4`}
+          costLabel={formatCost(quarryCost)}
+          buttonLabel={buildings.quarryLevel === 0 ? "Build Quarry" : "Upgrade Quarry"}
+          onClick={buildOrUpgradeQuarry}
+        />
+        <BuildingCard
+          icon={<BuildingIcon buildingId="mine" />}
+          title="Mine"
+          subtitle="Unlocks Gold resource."
+          status={`Level: ${buildings.mineLevel}/3`}
+          costLabel={formatCost(mineCost)}
+          buttonLabel={buildings.mineLevel === 0 ? "Build Mine" : "Upgrade Mine"}
+          onClick={buildOrUpgradeMine}
+        />
+        <BuildingCard
+          icon={<BuildingIcon buildingId="library" />}
+          title="Library"
+          subtitle="Unlocks Knowledge resource and advanced characters."
+          status={`Level: ${buildings.libraryLevel}/3`}
+          costLabel={formatCost(libraryCost)}
+          buttonLabel={buildings.libraryLevel === 0 ? "Build Library" : "Upgrade Library"}
+          onClick={buildOrUpgradeLibrary}
+        />
       </div>
 
-      <div className="rounded-xl border border-emerald-300/30 bg-emerald-900/20 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-emerald-100">Workshop</h3>
-          <span className="text-xs text-emerald-200">+12% Sticks PPS (compounding)</span>
-        </div>
-        <p className="text-sm text-emerald-100/90">Built: {buildings.workshops}</p>
-        <p className="text-sm text-emerald-100/90">
-          Current multiplier: x{resourceMultipliers.sticks.toFixed(2)} to all stick production.
-        </p>
-        <p className="mt-1 text-sm text-emerald-100/90">
-          Next cost: {workshopCost.sticks} {RESOURCE_LABELS.sticks} + {workshopCost.stone} {RESOURCE_LABELS.stone}
-        </p>
-        <p className="mb-3 mt-1 text-xs text-emerald-200/80">
-          Unlock requirement: {WORKSHOP_UNLOCK_HUTS} hut built.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            const result = buildWorkshop();
-            if (!result.ok) {
-              window.alert(result.reason);
-            }
-          }}
-          className="rounded-lg bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200"
-        >
-          Build Workshop
-        </button>
-      </div>
+      <p className="text-xs text-violet-200/80">
+        Inventory snapshot: {Object.entries(inventory).map(([resource, amount]) => `${Math.floor(amount)} ${RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}`).join(" · ")}
+      </p>
     </section>
+  );
+}
+
+function BuildingCard({
+  icon,
+  title,
+  subtitle,
+  status,
+  costLabel,
+  buttonLabel,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  status: string;
+  costLabel: string;
+  buttonLabel: string;
+  onClick: () => { ok: boolean; reason?: string };
+}) {
+  return (
+    <div className="rounded-xl border border-violet-200/20 bg-violet-950/35 p-4">
+      <div className="flex items-center gap-2"><span>{icon}</span><h3 className="text-lg font-semibold text-violet-100">{title}</h3></div>
+      <p className="text-sm text-violet-200/90">{subtitle}</p>
+      <p className="mt-2 text-sm text-violet-100">{status}</p>
+      <p className="mt-1 text-xs text-violet-300">Next cost: {costLabel}</p>
+      <button
+        type="button"
+        onClick={() => {
+          const result = onClick();
+          if (!result.ok) window.alert(result.reason);
+        }}
+        className="mt-3 rounded-lg bg-violet-300 px-4 py-2 text-sm font-semibold text-violet-950 transition hover:bg-violet-200"
+      >
+        {buttonLabel}
+      </button>
+    </div>
   );
 }

@@ -2,10 +2,8 @@
 
 import { ResourceCard } from "@/components/resources/resource-card";
 import { CityOverview } from "@/components/city/city-overview";
-import { RESOURCE_LABELS, type ResourceType } from "@/lib/game-data";
+import { RESOURCE_LABELS } from "@/lib/game-data";
 import { useGameStore } from "@/store/game-store";
-
-const resources: ResourceType[] = ["food", "water", "sticks", "stone"];
 
 export default function ResourcesPage() {
   const {
@@ -18,6 +16,7 @@ export default function ResourcesPage() {
     discoveredManagerIds,
     assignManagerToSlot,
     getEffectivePps,
+    unlockedResources,
   } = useGameStore();
 
   const assignedManagerIds = slots.flatMap((slot) => (slot.managerId ? [slot.managerId] : []));
@@ -27,9 +26,7 @@ export default function ResourcesPage() {
     <main className="space-y-6">
       <header>
         <h1 className="text-3xl font-bold text-violet-100">Resources</h1>
-        <p className="text-violet-200/80">
-          Gather materials manually or automate with managers.
-        </p>
+        <p className="text-violet-200/80">Gather materials manually or automate with managers.</p>
       </header>
 
       <CityOverview />
@@ -41,12 +38,9 @@ export default function ResourcesPage() {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {resources.map((resource) => {
+        {unlockedResources.map((resource) => {
           const slot = slots.find((currentSlot) => currentSlot.resourceType === resource);
-          if (!slot) {
-            return null;
-          }
-
+          if (!slot) return null;
           return (
             <ResourceCard
               key={resource}
@@ -60,9 +54,7 @@ export default function ResourcesPage() {
               assignedManagerIds={assignedManagerIds}
               onAssign={(slotId, managerId) => {
                 const result = assignManagerToSlot(slotId, managerId);
-                if (!result.ok) {
-                  window.alert(result.reason);
-                }
+                if (!result.ok) window.alert(result.reason);
               }}
               getEffectivePps={getEffectivePps}
             />
