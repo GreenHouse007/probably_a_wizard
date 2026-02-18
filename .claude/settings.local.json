@@ -6,7 +6,9 @@
       "Bash(npm run build:*)",
       "Bash(git -C /c/Users/adven/Documents/AlexCoding/probably_a_wizard pull)",
       "Bash(npx tsc:*)",
-      "Bash(npx next build:*)"
+      "Bash(npx next build:*)",
+      "Bash(node -e:*)",
+      "Bash(node scripts/generate-icons.mjs:*)"
     ]
   }
 }

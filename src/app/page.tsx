@@ -2,7 +2,21 @@
 
 import { useState, useMemo } from "react";
 import { ResourceIcon, CharacterIcon } from "@/components/ui/icons";
-import { RESOURCE_CHAINS, RESOURCE_LABELS, getChainTierResource, getUnlockedTiers, type ChainId, type ManagerId } from "@/lib/game-data";
+import {
+  RESOURCE_CHAINS,
+  RESOURCE_LABELS,
+  SOURCE_BUILDING_NAMES,
+  getChainTierResource,
+  getUnlockedTiers,
+  getSourceBuildingTapYield,
+  getSourceBuildingLevelUpCost,
+  getConverterBuilding,
+  isBuildingPrerequisiteMet,
+  getBuildingById,
+  type ChainId,
+  type ManagerId,
+  type ResourceType,
+} from "@/lib/game-data";
 import { useGameStore } from "@/store/game-store";
 
 const CHAIN_ICONS: Record<ChainId, string> = {
@@ -12,16 +26,28 @@ const CHAIN_ICONS: Record<ChainId, string> = {
   culture: "📚",
 };
 
+function formatAmount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return Math.floor(n).toString();
+}
+
 export default function ResourcesPage() {
   const {
     inventory,
     addResource,
     slots,
+    buildingSlots,
     managers,
     discoveredManagerIds,
     assignManagerToSlot,
+    assignManagerToBuildingSlot,
     getEffectivePps,
     buildings,
+    buildBuilding,
+    convertResource,
+    sourceBuildingLevels,
+    levelUpSourceBuilding,
   } = useGameStore();
 
   const [activeChain, setActiveChain] = useState<ChainId>("food");
@@ -32,17 +58,50 @@ export default function ResourcesPage() {
   const effectiveTierIndex = unlockedTierIndices.includes(activeTierIndex) ? activeTierIndex : 0;
   const activeResource = getChainTierResource(activeChain, effectiveTierIndex);
   const activeTier = chain.tiers[effectiveTierIndex];
+  const isT1 = effectiveTierIndex === 0;
 
+  // Source building (Tier 1)
+  const sourceBuildingLevel = sourceBuildingLevels[activeChain];
+  const tapYield = getSourceBuildingTapYield(sourceBuildingLevel);
+  const tier1ResourceId = getChainTierResource(activeChain, 0);
+  const levelUpCost = getSourceBuildingLevelUpCost(sourceBuildingLevel, activeChain);
+  const levelUpCostAmount = levelUpCost[tier1ResourceId] ?? 0;
+  const canAffordLevelUp = inventory[tier1ResourceId] >= levelUpCostAmount;
+
+  // Converter building (Tier 2+)
+  const converterBuilding = isT1 ? undefined : getConverterBuilding(activeResource);
+  const isBuilt = converterBuilding ? !!buildings.builtBuildings[converterBuilding.id] : false;
+  const prereqMet = converterBuilding ? isBuildingPrerequisiteMet(converterBuilding, buildings) : false;
+  const canAffordBuild = converterBuilding
+    ? Object.entries(converterBuilding.buildCost).every(([r, a]) => inventory[r as ResourceType] >= (a ?? 0))
+    : false;
+
+  // Slots
   const chainSlots = slots.filter((s) => s.chainId === activeChain);
-  const assignedManagerIds = slots.flatMap((s) => (s.managerId ? [s.managerId] : []));
+  const convBuildingSlots = converterBuilding
+    ? buildingSlots.filter((s) => s.buildingId === converterBuilding.id)
+    : [];
+
+  // Combined assigned IDs across all slot types for the dropdown available-list
+  const allAssignedManagerIds = useMemo(
+    () => [
+      ...slots.flatMap((s) => (s.managerId ? [s.managerId] : [])),
+      ...buildingSlots.flatMap((s) => (s.managerId ? [s.managerId] : [])),
+    ],
+    [slots, buildingSlots],
+  );
+
   const unlockedManagerIds = discoveredManagerIds.filter((id) => managers[id]?.unlocked);
 
-  const chainTotalPps = useMemo(() => {
-    return chainSlots.reduce((total, slot) => {
-      if (!slot.managerId) return total;
-      return total + getEffectivePps(slot.managerId);
-    }, 0);
-  }, [chainSlots, getEffectivePps]);
+  const chainTotalPps = useMemo(
+    () => chainSlots.reduce((sum, s) => sum + (s.managerId ? getEffectivePps(s.managerId) : 0), 0),
+    [chainSlots, getEffectivePps],
+  );
+
+  const convTotalPps = useMemo(
+    () => convBuildingSlots.reduce((sum, s) => sum + (s.managerId ? getEffectivePps(s.managerId) : 0), 0),
+    [convBuildingSlots, getEffectivePps],
+  );
 
   return (
     <main className="space-y-5">
@@ -94,72 +153,201 @@ export default function ResourcesPage() {
         })}
       </div>
 
-      {/* Main gather area */}
-      <div className="rounded-2xl border border-violet-200/25 bg-violet-900/30 p-6 shadow-lg shadow-violet-950/40">
-        <button
-          type="button"
-          onClick={() => addResource(activeResource)}
-          className="flex w-full flex-col items-center gap-3 transition hover:-translate-y-0.5"
-        >
-          <div className="flex items-center gap-3">
+      {/* Main card */}
+      <div className="rounded-2xl border border-violet-200/25 bg-violet-900/30 p-5 shadow-lg shadow-violet-950/40">
+        {/* Resource header */}
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <ResourceIcon resource={activeResource} />
-            <span className="text-2xl font-semibold text-violet-100">{activeTier.name}</span>
+            <span className="text-xl font-semibold text-violet-100">{activeTier.name}</span>
           </div>
-          <span className="text-sm text-violet-200/80">Tap to gather +1</span>
-          <span className="text-5xl font-bold text-violet-50">{Math.floor(inventory[activeResource])}</span>
-        </button>
-
-        {/* Manager slots */}
-        <div className="mt-6 border-t border-violet-200/15 pt-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-violet-300">Managers</p>
-          <div className="flex gap-3">
-            {chainSlots.map((slot) => (
-              <ManagerSlotButton
-                key={slot.id}
-                slot={slot}
-                managers={managers}
-                unlockedManagerIds={unlockedManagerIds}
-                assignedManagerIds={assignedManagerIds}
-                onAssign={(managerId) => {
-                  const result = assignManagerToSlot(slot.id, managerId);
-                  if (!result.ok) window.alert(result.reason);
-                }}
-                getEffectivePps={getEffectivePps}
-              />
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-violet-200/70">
-            {chainTotalPps > 0
-              ? `Auto-gathering: ${chainTotalPps.toFixed(2)} ${activeTier.name}/sec`
-              : "Assign managers to auto-gather"}
-          </p>
+          <span className="text-4xl font-bold text-violet-50">{formatAmount(inventory[activeResource])}</span>
         </div>
-      </div>
+        {activeTier.flavorText && (
+          <p className="mb-4 text-sm text-violet-300/70">{activeTier.flavorText}</p>
+        )}
 
-      {/* Chain inventory summary */}
-      <div className="rounded-2xl border border-violet-300/20 bg-violet-950/30 p-4">
-        <h3 className="mb-2 text-sm font-semibold text-violet-200">All {chain.name} Resources</h3>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {chain.tiers.map((tier, i) => {
-            const unlocked = unlockedTierIndices.includes(i);
-            return (
-              <div
-                key={tier.id}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                  unlocked
-                    ? "border border-violet-200/20 bg-violet-900/40 text-violet-100"
-                    : "text-violet-400/40"
-                }`}
-              >
-                {unlocked ? <ResourceIcon resource={tier.id} /> : <span className="h-10 w-10" />}
-                <div>
-                  <div className={unlocked ? "font-medium" : ""}>{unlocked ? tier.name : `Tier ${tier.tier} - Locked`}</div>
-                  {unlocked && <div className="text-xs text-violet-200/70">{Math.floor(inventory[tier.id])}</div>}
+        {isT1 ? (
+          <>
+            {/* Source building card */}
+            <div className="mb-4 rounded-xl border border-emerald-300/25 bg-emerald-950/30 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-emerald-200">{SOURCE_BUILDING_NAMES[activeChain]}</span>
+                  <span className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-xs text-emerald-300/80">Lv. {sourceBuildingLevel}</span>
                 </div>
+                <span className="text-xs text-emerald-300">Tap yields: +{tapYield.toFixed(2)}</span>
               </div>
-            );
-          })}
-        </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-xs text-emerald-300/60">
+                  Cost: {formatAmount(levelUpCostAmount)} {RESOURCE_LABELS[tier1ResourceId]}
+                </span>
+                <button
+                  type="button"
+                  disabled={!canAffordLevelUp}
+                  onClick={() => {
+                    const result = levelUpSourceBuilding(activeChain);
+                    if (!result.ok) window.alert(result.reason);
+                  }}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                    canAffordLevelUp
+                      ? "bg-violet-600 text-white hover:bg-violet-500"
+                      : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+                  }`}
+                >
+                  Level Up — {formatAmount(levelUpCostAmount)} {RESOURCE_LABELS[tier1ResourceId]}
+                </button>
+              </div>
+            </div>
+
+            {/* Tap button */}
+            <button
+              type="button"
+              onClick={() => addResource(activeResource, tapYield)}
+              className="mb-5 w-full rounded-xl bg-violet-600 px-6 py-3 text-center font-semibold text-white transition hover:bg-violet-500 active:scale-95"
+            >
+              Tap to Gather +{tapYield.toFixed(2)}
+            </button>
+
+            {/* Gathering managers */}
+            <div className="border-t border-violet-200/15 pt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-violet-300">Auto-Gathering</p>
+                {chainTotalPps > 0 && (
+                  <span className="text-xs text-violet-200/70">Total: {chainTotalPps.toFixed(2)}/s</span>
+                )}
+              </div>
+              <div className="flex gap-3">
+                {chainSlots.map((slot) => (
+                  <ManagerSlotButton
+                    key={slot.id}
+                    slot={slot}
+                    managers={managers}
+                    unlockedManagerIds={unlockedManagerIds}
+                    assignedManagerIds={allAssignedManagerIds}
+                    onAssign={(managerId) => {
+                      const result = assignManagerToSlot(slot.id, managerId);
+                      if (!result.ok) window.alert(result.reason);
+                    }}
+                    getEffectivePps={getEffectivePps}
+                  />
+                ))}
+              </div>
+              {chainTotalPps === 0 && (
+                <p className="mt-2 text-xs text-violet-200/50">Assign managers to auto-gather</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Converter building card */}
+            {converterBuilding ? (
+              isBuilt ? (
+                <div className="mb-4 rounded-xl border border-violet-300/25 bg-violet-950/30 p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-violet-200">{converterBuilding.name}</span>
+                    <span className="rounded-full bg-emerald-600/30 px-2 py-0.5 text-xs text-emerald-300">Built</span>
+                  </div>
+                  <p className="mb-1 text-xs text-violet-300/70">
+                    {formatAmount(converterBuilding.conversionRatio)} {RESOURCE_LABELS[converterBuilding.conversionInput!]} → 1 {RESOURCE_LABELS[converterBuilding.conversionOutput!]}
+                  </p>
+                  <p className="mb-3 text-xs text-violet-300/50">
+                    Available: {formatAmount(inventory[converterBuilding.conversionInput!])} {RESOURCE_LABELS[converterBuilding.conversionInput!]}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={inventory[converterBuilding.conversionInput!] < converterBuilding.conversionRatio}
+                    onClick={() => {
+                      const result = convertResource(converterBuilding.id);
+                      if (!result.ok) window.alert(result.reason);
+                    }}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                      inventory[converterBuilding.conversionInput!] >= converterBuilding.conversionRatio
+                        ? "bg-violet-600 text-white hover:bg-violet-500"
+                        : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+                    }`}
+                  >
+                    Convert Now
+                  </button>
+                </div>
+              ) : (
+                <div className="mb-4 rounded-xl border border-amber-300/25 bg-amber-950/30 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-amber-200">{converterBuilding.name}</span>
+                    <span className="text-xs text-amber-400/80">Not Built</span>
+                  </div>
+                  <div className="mb-3 space-y-0.5">
+                    {Object.entries(converterBuilding.buildCost).map(([res, amt]) => (
+                      <p
+                        key={res}
+                        className={`text-xs ${inventory[res as ResourceType] >= (amt ?? 0) ? "text-emerald-300" : "text-amber-200/70"}`}
+                      >
+                        {formatAmount(amt ?? 0)} {RESOURCE_LABELS[res as ResourceType]}
+                        {inventory[res as ResourceType] < (amt ?? 0) && (
+                          <span className="text-amber-400/60"> (have {formatAmount(inventory[res as ResourceType])})</span>
+                        )}
+                      </p>
+                    ))}
+                  </div>
+                  {!prereqMet && converterBuilding.prerequisite ? (
+                    <p className="text-xs text-amber-400/60">
+                      Requires: {getBuildingById(converterBuilding.prerequisite)?.name ?? converterBuilding.prerequisite}
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!canAffordBuild}
+                      onClick={() => {
+                        const result = buildBuilding(converterBuilding.id);
+                        if (!result.ok) window.alert(result.reason);
+                      }}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                        canAffordBuild
+                          ? "bg-amber-700 text-white hover:bg-amber-600"
+                          : "cursor-not-allowed bg-amber-900/50 text-amber-400"
+                      }`}
+                    >
+                      Build
+                    </button>
+                  )}
+                </div>
+              )
+            ) : (
+              <p className="mb-4 text-sm text-violet-300/50">No converter building for this resource.</p>
+            )}
+
+            {/* Auto-convert managers (only shown when building is built) */}
+            {converterBuilding && isBuilt && (
+              <div className="border-t border-violet-200/15 pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-medium uppercase tracking-wide text-violet-300">Auto-Convert</p>
+                  {convTotalPps > 0 && (
+                    <span className="text-xs text-violet-200/70">~{convTotalPps.toFixed(2)} conv/s</span>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  {convBuildingSlots.map((slot) => (
+                    <ManagerSlotButton
+                      key={slot.id}
+                      slot={slot}
+                      managers={managers}
+                      unlockedManagerIds={unlockedManagerIds}
+                      assignedManagerIds={allAssignedManagerIds}
+                      onAssign={(managerId) => {
+                        const result = assignManagerToBuildingSlot(slot.id, managerId);
+                        if (!result.ok) window.alert(result.reason);
+                      }}
+                      getEffectivePps={getEffectivePps}
+                    />
+                  ))}
+                </div>
+                {convTotalPps === 0 && (
+                  <p className="mt-2 text-xs text-violet-200/50">Assign managers to auto-convert</p>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </main>
   );

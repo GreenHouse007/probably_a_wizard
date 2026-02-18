@@ -3,13 +3,12 @@
 import { useState, useMemo } from "react";
 import { CharacterIcon, ResourceIcon } from "@/components/ui/icons";
 import {
+  HOUSING_TIERS,
   RESOURCE_CHAINS,
   RESOURCE_LABELS,
   getBuildingsForChain,
   getBuildingById,
-  getHousingTierName,
-  getHousingUpgradeCost,
-  getNewChainCost,
+  getHousingBuildCost,
   getStandaloneBuildings,
   isBuildingPrerequisiteMet,
   type BuildingDefinition,
@@ -52,8 +51,7 @@ export function BuildingsPanel() {
     assignManagerToBuildingSlot,
     buildBuilding,
     convertResource,
-    upgradeHousing,
-    addHousingChain,
+    buildHousing,
     managers,
     discoveredManagerIds,
     slots,
@@ -87,8 +85,7 @@ export function BuildingsPanel() {
         inventory={inventory}
         housedPeople={housedPeople}
         housingCapacity={housingCapacity}
-        upgradeHousing={upgradeHousing}
-        addHousingChain={addHousingChain}
+        buildHousing={buildHousing}
       />
 
       {/* Chain tabs */}
@@ -182,92 +179,79 @@ function HousingSection({
   inventory,
   housedPeople,
   housingCapacity,
-  upgradeHousing,
-  addHousingChain,
+  buildHousing,
 }: {
-  buildings: { housingLevel: number; housingChains: number; builtBuildings: Record<string, boolean> };
+  buildings: { builtBuildings: Record<string, boolean>; housingCounts: number[] };
   inventory: Inventory;
   housedPeople: number;
   housingCapacity: number;
-  upgradeHousing: () => { ok: boolean; reason?: string };
-  addHousingChain: () => { ok: boolean; reason?: string };
+  buildHousing: (tierIndex: number) => { ok: boolean; reason?: string };
 }) {
-  const upgradeCost =
-    buildings.housingChains > 0 && buildings.housingLevel < 7
-      ? getHousingUpgradeCost(buildings.housingLevel, buildings.housingChains)
-      : null;
-  const chainCost = buildings.housingChains < 4 ? getNewChainCost(buildings.housingLevel) : null;
-  const canAffordUpgrade = upgradeCost ? canAffordCost(inventory, upgradeCost) : false;
-  const canAffordChain = chainCost ? canAffordCost(inventory, chainCost) : false;
-
   return (
     <div className="rounded-2xl border border-violet-300/25 bg-violet-900/25 p-4">
-      <h2 className="mb-3 text-lg font-semibold text-violet-100">Housing</h2>
-
+      {/* Header */}
       <div className="mb-3 flex items-center justify-between">
-        <div>
-          {buildings.housingChains === 0 ? (
-            <p className="text-sm text-violet-200/80">No housing built yet</p>
-          ) : (
-            <>
-              <p className="text-sm font-medium text-violet-100">
-                {getHousingTierName(buildings.housingLevel)}{" "}
-                <span className="text-violet-300/70">(Level {buildings.housingLevel})</span>
-              </p>
-              <p className="text-xs text-violet-200/70">
-                {buildings.housingChains} chain{buildings.housingChains !== 1 ? "s" : ""} · Housed:{" "}
-                {housedPeople}/{housingCapacity}
-              </p>
-            </>
-          )}
-        </div>
-        {buildings.housingChains > 0 && (
-          <span className="text-xs text-violet-300/60">Chains: {buildings.housingChains}/4</span>
-        )}
+        <h2 className="text-lg font-semibold text-violet-100">Housing</h2>
+        <span className="rounded-full bg-violet-800/60 px-3 py-0.5 text-xs text-violet-200">
+          {housedPeople}/{housingCapacity} housed
+        </span>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {chainCost ? (
-          <button
-            type="button"
-            onClick={() => {
-              const result = addHousingChain();
-              if (!result.ok) window.alert(result.reason);
-            }}
-            disabled={!canAffordChain}
-            className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-              canAffordChain
-                ? "bg-violet-600 text-white hover:bg-violet-500"
-                : "cursor-not-allowed bg-violet-900/50 text-violet-400"
-            }`}
-          >
-            <span className="block">{buildings.housingChains === 0 ? "Add Housing Chain" : "Add Chain"}</span>
-            <span className="block text-xs opacity-75">{formatCosts(chainCost)}</span>
-          </button>
-        ) : (
-          <p className="self-center text-xs text-violet-300/60">Max chains (4/4)</p>
-        )}
+      {/* 7-tier grid */}
+      <div className="space-y-2">
+        {HOUSING_TIERS.map((tier, i) => {
+          const count = buildings.housingCounts[i] ?? 0;
+          const isMax = count >= 4;
+          const cost = getHousingBuildCost(i, count);
+          const affordable = cost ? canAffordCost(inventory, cost) : false;
 
-        {upgradeCost ? (
-          <button
-            type="button"
-            onClick={() => {
-              const result = upgradeHousing();
-              if (!result.ok) window.alert(result.reason);
-            }}
-            disabled={!canAffordUpgrade}
-            className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-              canAffordUpgrade
-                ? "bg-violet-600 text-white hover:bg-violet-500"
-                : "cursor-not-allowed bg-violet-900/50 text-violet-400"
-            }`}
-          >
-            <span className="block">→ {getHousingTierName(buildings.housingLevel + 1)}</span>
-            <span className="block text-xs opacity-75">{formatCosts(upgradeCost)}</span>
-          </button>
-        ) : buildings.housingChains > 0 && buildings.housingLevel >= 7 ? (
-          <p className="self-center text-xs text-violet-300/60">Max level (Space Station)</p>
-        ) : null}
+          return (
+            <div
+              key={tier.name}
+              className="flex items-center justify-between gap-3 rounded-xl border border-violet-200/15 bg-violet-950/30 px-4 py-2.5"
+            >
+              {/* Left: name + capacity */}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-violet-100">{tier.name}</p>
+                <p className="text-xs text-violet-300/60">{tier.capacity} slot{tier.capacity !== 1 ? "s" : ""}/building</p>
+              </div>
+
+              {/* Count badge */}
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  isMax ? "bg-emerald-900/60 text-emerald-300" : "bg-violet-800/50 text-violet-300"
+                }`}
+              >
+                {count}/4
+              </span>
+
+              {/* Cost + button */}
+              <div className="flex shrink-0 flex-col items-end gap-0.5">
+                {!isMax && cost && (
+                  <p className="text-xs text-violet-300/50">{formatCosts(cost)}</p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isMax) return;
+                    const result = buildHousing(i);
+                    if (!result.ok) window.alert(result.reason);
+                  }}
+                  disabled={isMax || !affordable}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    isMax
+                      ? "cursor-default bg-emerald-900/40 text-emerald-400"
+                      : affordable
+                        ? "bg-violet-600 text-white hover:bg-violet-500"
+                        : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+                  }`}
+                >
+                  {isMax ? "Max" : "Build"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

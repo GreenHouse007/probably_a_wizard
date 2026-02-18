@@ -9,11 +9,12 @@ export type PersistedGameState = {
   buildingSlots?: BuildingManagerSlot[];
   activeChainTier: Record<ChainId, number>;
   managerLevels?: Record<ManagerId, number>;
+  sourceBuildingLevels?: Record<ChainId, number>;
   lastActiveAt: number;
 };
 
-const STORAGE_KEY = "probably-a-wizard-save-v4";
-const LEGACY_KEY = "probably-a-wizard-mvp-save-v3";
+const STORAGE_KEY = "probably-a-wizard-save-v5";
+const LEGACY_KEY = "probably-a-wizard-save-v4";
 
 export interface GamePersistence {
   load(): Promise<PersistedGameState | null>;

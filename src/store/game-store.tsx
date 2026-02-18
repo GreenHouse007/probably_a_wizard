@@ -23,11 +23,12 @@ import {
   getBuildingById,
   getChainTierResource,
   getEffectiveMultiplier,
+  getHousingBuildCost,
   getHousingCapacity,
-  getHousingUpgradeCost,
   getLevelUpCost,
   getManagerUnlockCost,
-  getNewChainCost,
+  getSourceBuildingLevelUpCost,
+  HOUSING_TIERS,
   getUnlockedResources,
   isBuildingPrerequisiteMet,
   makeCombinationKey,
@@ -54,6 +55,10 @@ function getDefaultManagerLevels(): Record<ManagerId, number> {
   return Object.fromEntries(
     Object.keys(DEFAULT_MANAGERS).map((id) => [id, 0]),
   ) as Record<ManagerId, number>;
+}
+
+function getDefaultSourceBuildingLevels(): Record<ChainId, number> {
+  return Object.fromEntries(CHAIN_IDS.map((id) => [id, 0])) as Record<ChainId, number>;
 }
 
 function computeEffectivePps(pps: number, level: number): number {
@@ -87,9 +92,10 @@ export type GameState = {
   setActiveChainTier: (chainId: ChainId, tierIndex: number) => void;
   buildBuilding: (buildingId: BuildingId) => { ok: boolean; reason?: string };
   convertResource: (buildingId: BuildingId) => { ok: boolean; reason?: string };
-  upgradeHousing: () => { ok: boolean; reason?: string };
-  addHousingChain: () => { ok: boolean; reason?: string };
+  buildHousing: (tierIndex: number) => { ok: boolean; reason?: string };
   levelUpManager: (managerId: ManagerId) => { ok: boolean; reason?: string };
+  sourceBuildingLevels: Record<ChainId, number>;
+  levelUpSourceBuilding: (chainId: ChainId) => { ok: boolean; reason?: string };
 };
 
 const GameStoreContext = createContext<GameState | null>(null);
@@ -140,6 +146,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
   const [slots, setSlots] = useState(getDefaultSlots);
   const [buildingSlots, setBuildingSlots] = useState(getDefaultBuildingSlots);
   const [managerLevels, setManagerLevels] = useState(getDefaultManagerLevels);
+  const [sourceBuildingLevels, setSourceBuildingLevels] = useState(getDefaultSourceBuildingLevels);
   const [activeChainTier, setActiveChainTierState] = useState(getDefaultActiveChainTier);
   const [hydrated, setHydrated] = useState(false);
   const [offlineProgressSummary, setOfflineProgressSummary] = useState<OfflineProgressSummary | null>(null);
@@ -214,6 +221,9 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       setSlots(restoredSlots);
       setBuildingSlots(restoredBuildingSlots);
       setManagerLevels(restoredManagerLevels);
+      if (saved.sourceBuildingLevels) {
+        setSourceBuildingLevels({ ...getDefaultSourceBuildingLevels(), ...saved.sourceBuildingLevels });
+      }
       if (saved.activeChainTier) setActiveChainTierState(saved.activeChainTier);
 
       if (Object.values(gains).some((amount) => (amount ?? 0) > 0)) {
@@ -236,9 +246,10 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       buildingSlots,
       activeChainTier,
       managerLevels,
+      sourceBuildingLevels,
       lastActiveAt: Date.now(),
     });
-  }, [hydrated, inventory, buildings, managers, discoveredManagerIds, slots, buildingSlots, activeChainTier, managerLevels]);
+  }, [hydrated, inventory, buildings, managers, discoveredManagerIds, slots, buildingSlots, activeChainTier, managerLevels, sourceBuildingLevels]);
 
   const dismissOfflineProgressSummary = useCallback(() => setOfflineProgressSummary(null), []);
   const dismissNewResourceUnlocked = useCallback(() => setNewResourceUnlocked(null), []);
@@ -252,6 +263,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
     setSlots(getDefaultSlots());
     setBuildingSlots(getDefaultBuildingSlots());
     setManagerLevels(getDefaultManagerLevels());
+    setSourceBuildingLevels(getDefaultSourceBuildingLevels());
     setActiveChainTierState(getDefaultActiveChainTier());
     setOfflineProgressSummary(null);
     setNewResourceUnlocked(null);
@@ -379,32 +391,17 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Housing Actions ────────────────────────────────────────────────────
 
-  const upgradeHousing = useCallback(() => {
-    if (buildings.housingChains === 0) return { ok: false, reason: "Build a housing chain first." };
-    if (buildings.housingLevel >= 7) return { ok: false, reason: "Housing is at maximum level." };
-
-    const cost = getHousingUpgradeCost(buildings.housingLevel, buildings.housingChains);
-    if (!cost) return { ok: false, reason: "No upgrade available." };
+  const buildHousing = useCallback((tierIndex: number) => {
+    const currentCount = buildings.housingCounts[tierIndex] ?? 0;
+    const cost = getHousingBuildCost(tierIndex, currentCount);
+    if (!cost) return { ok: false, reason: `Already built 4 ${HOUSING_TIERS[tierIndex]?.name ?? "buildings"}.` };
     if (!canAfford(inventory, cost)) return { ok: false, reason: "Not enough resources." };
-
     setInventory((current) => spend(current, cost));
-    setBuildings((current) => ({ ...current, housingLevel: current.housingLevel + 1 }));
-    return { ok: true };
-  }, [buildings, inventory]);
-
-  const addHousingChain = useCallback(() => {
-    if (buildings.housingChains >= 4) return { ok: false, reason: "Maximum 4 housing chains." };
-
-    const cost = getNewChainCost(buildings.housingLevel);
-    if (!cost) return { ok: false, reason: "Cannot add chain." };
-    if (!canAfford(inventory, cost)) return { ok: false, reason: "Not enough resources." };
-
-    setInventory((current) => spend(current, cost));
-    setBuildings((current) => ({
-      ...current,
-      housingChains: current.housingChains + 1,
-      housingLevel: Math.max(current.housingLevel, 1),
-    }));
+    setBuildings((current) => {
+      const newCounts = [...(current.housingCounts ?? [0, 0, 0, 0, 0, 0, 0])];
+      newCounts[tierIndex] = (newCounts[tierIndex] ?? 0) + 1;
+      return { ...current, housingCounts: newCounts };
+    });
     return { ok: true };
   }, [buildings, inventory]);
 
@@ -425,6 +422,15 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, [managers, managerLevels, inventory]);
 
+  const levelUpSourceBuilding = useCallback((chainId: ChainId) => {
+    const currentLevel = sourceBuildingLevels[chainId] ?? 0;
+    const cost = getSourceBuildingLevelUpCost(currentLevel, chainId);
+    if (!canAfford(inventory, cost)) return { ok: false, reason: "Not enough resources." };
+    setInventory((current) => spend(current, cost));
+    setSourceBuildingLevels((current) => ({ ...current, [chainId]: currentLevel + 1 }));
+    return { ok: true };
+  }, [sourceBuildingLevels, inventory]);
+
   const value = useMemo(() => ({
     inventory,
     managers,
@@ -440,6 +446,7 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
     offlineProgressSummary,
     newResourceUnlocked,
     managerLevels,
+    sourceBuildingLevels,
     dismissOfflineProgressSummary,
     dismissNewResourceUnlocked,
     resetGame,
@@ -452,17 +459,18 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
     setActiveChainTier,
     buildBuilding,
     convertResource,
-    upgradeHousing,
-    addHousingChain,
+    buildHousing,
     levelUpManager,
+    levelUpSourceBuilding,
   }), [
     inventory, managers, discoveredManagerIds, slots, buildingSlots, buildings,
     activeChainTier, housedPeople, housingCapacity, unlockedResources, hydrated,
-    offlineProgressSummary, newResourceUnlocked, managerLevels,
+    offlineProgressSummary, newResourceUnlocked, managerLevels, sourceBuildingLevels,
     dismissOfflineProgressSummary, dismissNewResourceUnlocked, resetGame,
     addResource, unlockManager, getEffectivePps, assignManagerToSlot,
     assignManagerToBuildingSlot, attemptCombine, setActiveChainTier,
-    buildBuilding, convertResource, upgradeHousing, addHousingChain, levelUpManager,
+    buildBuilding, convertResource, buildHousing, levelUpManager,
+    levelUpSourceBuilding,
   ]);
 
   return <GameStoreContext.Provider value={value}>{children}</GameStoreContext.Provider>;

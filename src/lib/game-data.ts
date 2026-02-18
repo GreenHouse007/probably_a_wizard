@@ -7,6 +7,7 @@ export type ResourceTier = {
   id: ResourceType;
   name: string;
   tier: number;
+  flavorText: string;
 };
 
 export type ResourceChain = {
@@ -20,48 +21,48 @@ export const RESOURCE_CHAINS: ResourceChain[] = [
     id: "food",
     name: "Food",
     tiers: [
-      { id: "berries", name: "Berries", tier: 1 },
-      { id: "croissants", name: "Croissants", tier: 2 },
-      { id: "tacos", name: "Tacos", tier: 3 },
-      { id: "chocolate-cake", name: "Chocolate Cake", tier: 4 },
-      { id: "sushi-platter", name: "Sushi Platter", tier: 5 },
-      { id: "nectar-of-the-gods", name: "Nectar of the Gods", tier: 6 },
+      { id: "berries", name: "Berries", tier: 1, flavorText: "Small, tart, and plentiful. The foundation of any respectable wizard's snack collection." },
+      { id: "croissants", name: "Croissants", tier: 2, flavorText: "Flaky, buttery, and suspiciously sophisticated for a magical settlement." },
+      { id: "tacos", name: "Tacos", tier: 3, flavorText: "Some things transcend civilization. Tacos are one of them." },
+      { id: "chocolate-cake", name: "Chocolate Cake", tier: 4, flavorText: "Evidence that resource chains can lead somewhere beautiful." },
+      { id: "sushi-platter", name: "Sushi Platter", tier: 5, flavorText: "Freshness so pristine it practically glows. Or maybe that's the magic." },
+      { id: "nectar-of-the-gods", name: "Nectar of the Gods", tier: 6, flavorText: "Not technically for mortals. But here you are." },
     ],
   },
   {
     id: "construction",
     name: "Construction",
     tiers: [
-      { id: "cool-sticks", name: "Cool Sticks", tier: 1 },
-      { id: "cardboard-boxes", name: "Cardboard Boxes", tier: 2 },
-      { id: "power-tools", name: "Power Tools", tier: 3 },
-      { id: "3d-printers", name: "3D Printers", tier: 4 },
-      { id: "autonomous-builders", name: "Autonomous Builders", tier: 5 },
-      { id: "nano-bots", name: "Nano Bots", tier: 6 },
+      { id: "cool-sticks", name: "Cool Sticks", tier: 1, flavorText: "Remarkably versatile. What can't you build with a good stick?" },
+      { id: "cardboard-boxes", name: "Cardboard Boxes", tier: 2, flavorText: "The unsung hero of every great civilization." },
+      { id: "power-tools", name: "Power Tools", tier: 3, flavorText: "Now you're building with purpose." },
+      { id: "3d-printers", name: "3D Printers", tier: 4, flavorText: "If it doesn't exist yet, just print it." },
+      { id: "autonomous-builders", name: "Autonomous Builders", tier: 5, flavorText: "They work while you don't. Perfect." },
+      { id: "nano-bots", name: "Nano Bots", tier: 6, flavorText: "Too small to see, too efficient to question." },
     ],
   },
   {
     id: "energy",
     name: "Energy",
     tiers: [
-      { id: "coal", name: "Coal", tier: 1 },
-      { id: "aa-batteries", name: "AA Batteries", tier: 2 },
-      { id: "caffeinated-beverage", name: "Caffeinated Beverage", tier: 3 },
-      { id: "radioactive-cores", name: "Radioactive Cores", tier: 4 },
-      { id: "lightning-in-a-bottle", name: "Lightning in a Bottle", tier: 5 },
-      { id: "pocket-black-hole", name: "Pocket Black Hole", tier: 6 },
+      { id: "coal", name: "Coal", tier: 1, flavorText: "Ancient sunlight, compressed and ready to work again." },
+      { id: "aa-batteries", name: "AA Batteries", tier: 2, flavorText: "Powering remote controls and revolutions alike." },
+      { id: "caffeinated-beverage", name: "Caffeinated Beverage", tier: 3, flavorText: "The true fuel of all progress." },
+      { id: "radioactive-cores", name: "Radioactive Cores", tier: 4, flavorText: "Handle with care. Or don't. You're probably a wizard." },
+      { id: "lightning-in-a-bottle", name: "Lightning in a Bottle", tier: 5, flavorText: "Someone actually did it." },
+      { id: "pocket-black-hole", name: "Pocket Black Hole", tier: 6, flavorText: "Infinitely dense. Infinitely useful." },
     ],
   },
   {
     id: "culture",
     name: "Culture",
     tiers: [
-      { id: "novels", name: "Novels", tier: 1 },
-      { id: "classic-movies", name: "Classic Movies", tier: 2 },
-      { id: "dino-bones", name: "Dino Bones", tier: 3 },
-      { id: "video-games", name: "Video Games", tier: 4 },
-      { id: "artificial-intelligence", name: "Artificial Intelligence", tier: 5 },
-      { id: "alien-tech", name: "Alien Tech", tier: 6 },
+      { id: "novels", name: "Novels", tier: 1, flavorText: "Every story is a doorway. You have a lot of doors." },
+      { id: "classic-movies", name: "Classic Movies", tier: 2, flavorText: "Some call it nostalgia. You call it raw cultural output." },
+      { id: "dino-bones", name: "Dino Bones", tier: 3, flavorText: "Extinction is temporary. Fascination is forever." },
+      { id: "video-games", name: "Video Games", tier: 4, flavorText: "The pinnacle of interactive narrative. Also explosions." },
+      { id: "artificial-intelligence", name: "Artificial Intelligence", tier: 5, flavorText: "It learns. It grows. It occasionally makes coffee." },
+      { id: "alien-tech", name: "Alien Tech", tier: 6, flavorText: "Where did it come from? Better not to ask." },
     ],
   },
 ];
@@ -397,32 +398,19 @@ export const HOUSING_TIERS: HousingTier[] = [
   { name: "Space Station", capacity: 64, level: 7 },
 ];
 
-const HOUSING_TIER_CAPACITY = [0, 1, 2, 4, 8, 16, 32, 64];
-
-const HOUSING_UPGRADE_COSTS: Partial<Inventory>[] = [
-  {}, // level 0 → nothing
-  { berries: 100, "cool-sticks": 100 }, // → Tent
-  { berries: 250, "cool-sticks": 250, coal: 100, novels: 100 }, // → House
-  { croissants: 100, "cardboard-boxes": 100, "aa-batteries": 100, "classic-movies": 100 }, // → Duplex
-  { tacos: 50, "power-tools": 50, "caffeinated-beverage": 50, "dino-bones": 50 }, // → Hotel
-  { "chocolate-cake": 25, "3d-printers": 25, "radioactive-cores": 25, "video-games": 25 }, // → Apartment Complex
-  { "sushi-platter": 10, "autonomous-builders": 10, "lightning-in-a-bottle": 10, "artificial-intelligence": 10 }, // → Floating City
-  { "nectar-of-the-gods": 5, "nano-bots": 5, "pocket-black-hole": 5, "alien-tech": 5 }, // → Space Station
+const HOUSING_BUILD_COSTS: Partial<Inventory>[] = [
+  { berries: 100, "cool-sticks": 100 },                                                                              // 0 Tent
+  { berries: 250, "cool-sticks": 250, coal: 100, novels: 100 },                                                      // 1 House
+  { croissants: 100, "cardboard-boxes": 100, "aa-batteries": 100, "classic-movies": 100 },                           // 2 Duplex
+  { tacos: 50, "power-tools": 50, "caffeinated-beverage": 50, "dino-bones": 50 },                                    // 3 Hotel
+  { "chocolate-cake": 25, "3d-printers": 25, "radioactive-cores": 25, "video-games": 25 },                          // 4 Apartment Complex
+  { "sushi-platter": 10, "autonomous-builders": 10, "lightning-in-a-bottle": 10, "artificial-intelligence": 10 },   // 5 Floating City
+  { "nectar-of-the-gods": 5, "nano-bots": 5, "pocket-black-hole": 5, "alien-tech": 5 },                            // 6 Space Station
 ];
 
-export function getHousingUpgradeCost(currentLevel: number, chains: number): Partial<Inventory> | null {
-  const nextLevel = currentLevel + 1;
-  const baseCost = HOUSING_UPGRADE_COSTS[nextLevel];
-  if (!baseCost) return null;
-  const multiplier = Math.max(1, chains);
-  return Object.fromEntries(
-    Object.entries(baseCost).map(([resource, amount]) => [resource, (amount ?? 0) * multiplier]),
-  ) as Partial<Inventory>;
-}
-
-export function getNewChainCost(currentLevel: number): Partial<Inventory> | null {
-  if (currentLevel === 0) return HOUSING_UPGRADE_COSTS[1] ?? null;
-  return HOUSING_UPGRADE_COSTS[currentLevel] ?? null;
+export function getHousingBuildCost(tierIndex: number, currentCount: number): Partial<Inventory> | null {
+  if (currentCount >= 4) return null;
+  return HOUSING_BUILD_COSTS[tierIndex] ?? null;
 }
 
 export function getHousingTierName(level: number): string {
@@ -434,18 +422,19 @@ export function getHousingTierName(level: number): string {
 
 export type Buildings = {
   builtBuildings: Record<string, boolean>;
-  housingLevel: number;
-  housingChains: number;
+  housingCounts: number[]; // length 7, index 0-6 → count built (0-4)
 };
 
 export const DEFAULT_BUILDINGS: Buildings = {
   builtBuildings: {},
-  housingLevel: 0,
-  housingChains: 0,
+  housingCounts: [0, 0, 0, 0, 0, 0, 0],
 };
 
 export function getHousingCapacity(buildings: Buildings): number {
-  return buildings.housingChains * (HOUSING_TIER_CAPACITY[buildings.housingLevel] ?? 0);
+  return (buildings.housingCounts ?? []).reduce(
+    (total, count, i) => total + count * (HOUSING_TIERS[i]?.capacity ?? 0),
+    0,
+  );
 }
 
 export function getUnlockedResources(buildings: Buildings): ResourceType[] {
@@ -680,4 +669,30 @@ export function getManagerLevelTierLabel(level: number): string {
   if (level >= 50) return "Silver";
   if (level >= 25) return "Bronze";
   return "";
+}
+
+// ─── Source Building System ──────────────────────────────────────────────────
+
+export const SOURCE_BUILDING_NAMES: Record<ChainId, string> = {
+  food: "Berry Bush",
+  construction: "Lumber Yard",
+  energy: "Coal Mine",
+  culture: "Writing Desk",
+};
+
+/** Tap yield for a source building at the given level. Level 0 = 1.0, Level 20 = 2.0, etc. */
+export function getSourceBuildingTapYield(level: number): number {
+  return 1 + level * 0.05;
+}
+
+/** Cost in the chain's Tier 1 resource to level up the source building from `level` → `level+1`. */
+export function getSourceBuildingLevelUpCost(level: number, chainId: ChainId): Partial<Inventory> {
+  const chain = RESOURCE_CHAINS.find((c) => c.id === chainId)!;
+  const tier1Resource = chain.tiers[0].id;
+  return { [tier1Resource]: Math.floor(25 * Math.pow(1.12, level)) };
+}
+
+/** Finds the converter building whose output is the given resource, if any. */
+export function getConverterBuilding(resource: ResourceType): BuildingDefinition | undefined {
+  return BUILDING_DEFINITIONS.find((b) => b.conversionOutput === resource);
 }
