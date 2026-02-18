@@ -1,17 +1,31 @@
 "use client";
 
+import { useEffect } from "react";
 import { GameRuntime } from "@/components/game/game-runtime";
 import { TopNav } from "@/components/layout/top-nav";
 import { RESOURCE_LABELS } from "@/lib/game-data";
 import { GameStoreProvider, useGameStore } from "@/store/game-store";
 
 function ShellInner({ children }: { children: React.ReactNode }) {
-  const { hydrated, offlineProgressSummary, dismissOfflineProgressSummary } = useGameStore();
+  const {
+    hydrated,
+    offlineProgressSummary,
+    dismissOfflineProgressSummary,
+    newResourceUnlocked,
+    dismissNewResourceUnlocked,
+  } = useGameStore();
 
   const offlineGainRows = offlineProgressSummary
     ? (Object.entries(offlineProgressSummary.gains) as [keyof typeof RESOURCE_LABELS, number][])
         .filter(([, amount]) => amount > 0)
     : [];
+
+  // Auto-dismiss the unlock toast after 4 seconds
+  useEffect(() => {
+    if (!newResourceUnlocked) return;
+    const timer = setTimeout(dismissNewResourceUnlocked, 4000);
+    return () => clearTimeout(timer);
+  }, [newResourceUnlocked, dismissNewResourceUnlocked]);
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-6xl px-4 py-6 text-violet-50 md:px-6">
@@ -25,6 +39,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         children
       )}
 
+      {/* Offline progress popup */}
       {offlineProgressSummary && offlineGainRows.length > 0 ? (
         <div className="fixed inset-x-0 top-5 z-50 mx-auto w-full max-w-lg px-4">
           <div className="rounded-xl border border-emerald-200/35 bg-emerald-900/95 p-4 text-emerald-50 shadow-2xl">
@@ -49,6 +64,25 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      ) : null}
+
+      {/* New resource unlock toast */}
+      {newResourceUnlocked ? (
+        <div className="fixed inset-x-0 bottom-6 z-50 mx-auto w-full max-w-sm px-4">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300/40 bg-amber-900/95 px-4 py-3 text-amber-50 shadow-2xl">
+            <div>
+              <p className="text-sm font-semibold">New resource unlocked!</p>
+              <p className="text-sm text-amber-200">{newResourceUnlocked}</p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissNewResourceUnlocked}
+              className="shrink-0 rounded-md border border-amber-200/40 px-2 py-1 text-xs font-semibold text-amber-100"
+            >
+              ✕
+            </button>
           </div>
         </div>
       ) : null}

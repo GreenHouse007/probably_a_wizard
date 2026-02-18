@@ -18,34 +18,21 @@ const LIBRARY_SOURCE = "library";
 const WORKSPACE_SOURCE = "workspace";
 
 const clampToWorkspace = (value: number, workspaceSize?: number) => {
-  if (workspaceSize === undefined) {
-    return Math.max(0, value);
-  }
-
+  if (workspaceSize === undefined) return Math.max(0, value);
   return Math.min(Math.max(0, value), Math.max(0, workspaceSize - TILE_SIZE));
 };
 
 export function DiscoveryBoard() {
-  const {
-    managers,
-    discoveredManagerIds,
-    attemptCombine,
-  } = useGameStore();
+  const { managers, discoveredManagerIds, attemptCombine } = useGameStore();
   const [tiles, setTiles] = useState<WorkspaceTile[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
   const unlockedLibraryIds = useMemo(
-    () => discoveredManagerIds.filter((managerId) => managers[managerId]?.unlocked),
+    () => discoveredManagerIds.filter((id) => managers[id]?.unlocked),
     [discoveredManagerIds, managers],
   );
 
-  const placeTile = (
-    managerId: ManagerId,
-    x: number,
-    y: number,
-    workspaceWidth?: number,
-    workspaceHeight?: number,
-  ) => {
+  const placeTile = (managerId: ManagerId, x: number, y: number, workspaceWidth?: number, workspaceHeight?: number) => {
     setTiles((current) => [
       ...current,
       {
@@ -59,96 +46,49 @@ export function DiscoveryBoard() {
 
   const handleDropOnWorkspace = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-
-    const dragSource = event.dataTransfer.getData(DRAG_SOURCE_KEY);
-    if (dragSource === WORKSPACE_SOURCE) {
-      return;
-    }
+    if (event.dataTransfer.getData(DRAG_SOURCE_KEY) === WORKSPACE_SOURCE) return;
 
     const managerId = event.dataTransfer.getData("manager-id") as ManagerId;
-    if (!managerId) {
-      return;
-    }
+    if (!managerId) return;
 
     const bounds = event.currentTarget.getBoundingClientRect();
-    placeTile(
-      managerId,
-      event.clientX - bounds.left - TILE_SIZE / 2,
-      event.clientY - bounds.top - TILE_SIZE / 2,
-      bounds.width,
-      bounds.height,
-    );
+    placeTile(managerId, event.clientX - bounds.left - TILE_SIZE / 2, event.clientY - bounds.top - TILE_SIZE / 2, bounds.width, bounds.height);
   };
 
-  const combineAt = (
-    movedTileId: string,
-    x?: number,
-    y?: number,
-    workspaceWidth?: number,
-    workspaceHeight?: number,
-  ) => {
+  const combineAt = (movedTileId: string, x?: number, y?: number, workspaceWidth?: number, workspaceHeight?: number) => {
     setTiles((current) => {
       const moved = current.find((tile) => tile.id === movedTileId);
-      if (!moved) {
-        return current;
-      }
+      if (!moved) return current;
 
-      const clampedX =
-        x === undefined ? undefined : clampToWorkspace(x, workspaceWidth);
-      const clampedY =
-        y === undefined ? undefined : clampToWorkspace(y, workspaceHeight);
-
-      const movedTile =
-        clampedX === undefined || clampedY === undefined
-          ? moved
-          : { ...moved, x: clampedX, y: clampedY };
-
-      const movedCurrent = current.map((tile) =>
-        tile.id === movedTileId ? movedTile : tile,
-      );
+      const clampedX = x === undefined ? undefined : clampToWorkspace(x, workspaceWidth);
+      const clampedY = y === undefined ? undefined : clampToWorkspace(y, workspaceHeight);
+      const movedTile = clampedX === undefined || clampedY === undefined ? moved : { ...moved, x: clampedX, y: clampedY };
+      const movedCurrent = current.map((tile) => (tile.id === movedTileId ? movedTile : tile));
 
       const overlap = movedCurrent.find((tile) => {
-        if (tile.id === movedTile.id) {
-          return false;
-        }
-
-        const xOverlap = Math.abs(tile.x - movedTile.x) < TILE_SIZE * 0.55;
-        const yOverlap = Math.abs(tile.y - movedTile.y) < TILE_SIZE * 0.55;
-        return xOverlap && yOverlap;
+        if (tile.id === movedTile.id) return false;
+        return Math.abs(tile.x - movedTile.x) < TILE_SIZE * 0.55 && Math.abs(tile.y - movedTile.y) < TILE_SIZE * 0.55;
       });
 
-      if (!overlap) {
-        return movedCurrent;
-      }
+      if (!overlap) return movedCurrent;
 
       const result = attemptCombine(movedTile.managerId, overlap.managerId);
-      if (!result.ok || !result.discoveredId) {
-        return movedCurrent;
-      }
+      if (!result.ok || !result.discoveredId) return movedCurrent;
 
       const resultManager = managers[result.discoveredId];
-      setToast(
-        result.alreadyKnown
-          ? `Already discovered: ${resultManager.name}`
-          : `Discovered: ${resultManager.name}!`,
-      );
+      setToast(result.alreadyKnown ? `Already discovered: ${resultManager.name}` : `Discovered: ${resultManager.name}!`);
       window.setTimeout(() => setToast(null), 1800);
 
-      const remaining = movedCurrent.filter(
-        (tile) => tile.id !== movedTile.id && tile.id !== overlap.id,
-      );
-
+      const remaining = movedCurrent.filter((tile) => tile.id !== movedTile.id && tile.id !== overlap.id);
       return [
         ...remaining,
         ...(managers[result.discoveredId]?.unlocked
-          ? [
-              {
-                id: `${result.discoveredId}-${Date.now()}`,
-                managerId: result.discoveredId,
-                x: clampToWorkspace((movedTile.x + overlap.x) / 2, workspaceWidth),
-                y: clampToWorkspace((movedTile.y + overlap.y) / 2, workspaceHeight),
-              },
-            ]
+          ? [{
+              id: `${result.discoveredId}-${Date.now()}`,
+              managerId: result.discoveredId,
+              x: clampToWorkspace((movedTile.x + overlap.x) / 2, workspaceWidth),
+              y: clampToWorkspace((movedTile.y + overlap.y) / 2, workspaceHeight),
+            }]
           : []),
       ];
     });
@@ -163,51 +103,42 @@ export function DiscoveryBoard() {
             {discoveredManagerIds.length} / {Object.keys(managers).length} discovered
           </span>
         </div>
-
         <p className="mb-3 text-xs text-violet-200/90">
-          Unlocked for discovery: <span className="font-semibold">{unlockedLibraryIds.length}</span>. Locked discovered characters are shown but cannot be dragged until unlocked in the Characters tab.
+          Unlocked: <span className="font-semibold">{unlockedLibraryIds.length}</span>. Locked characters cannot be dragged.
         </p>
-
         <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
-          {discoveredManagerIds.map((managerId) => (
-            (() => {
-              const manager = managers[managerId];
-              const unlocked = manager.unlocked;
-
-              return (
-            <button
-              key={managerId}
-              draggable={unlocked}
-              onDragStart={(event) => {
-                if (!unlocked) {
-                  event.preventDefault();
-                  return;
-                }
-
-                event.dataTransfer.setData(DRAG_SOURCE_KEY, LIBRARY_SOURCE);
-                event.dataTransfer.setData("manager-id", managerId);
-              }}
-              className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-sm shadow ${
-                unlocked
-                  ? "border-violet-200/20 bg-violet-800/55 text-violet-50"
-                  : "cursor-not-allowed border-violet-200/10 bg-violet-900/35 text-violet-300/70"
-              }`}
-              type="button"
-            >
-              <CharacterIcon managerId={managerId} />
-              <div>
-                <div className="font-medium">{manager.name}</div>
-                <div className="text-xs text-violet-200">{manager.pps} pps</div>
-              </div>
-              <span className={`ml-auto rounded-md px-2 py-1 text-[10px] font-semibold ${
-                unlocked ? "bg-emerald-300/20 text-emerald-100" : "bg-violet-200/10 text-violet-200/80"
-              }`}>
-                {unlocked ? "Unlocked" : "Locked"}
-              </span>
-            </button>
-              );
-            })()
-          ))}
+          {discoveredManagerIds.map((managerId) => {
+            const manager = managers[managerId];
+            const unlocked = manager.unlocked;
+            return (
+              <button
+                key={managerId}
+                draggable={unlocked}
+                onDragStart={(event) => {
+                  if (!unlocked) { event.preventDefault(); return; }
+                  event.dataTransfer.setData(DRAG_SOURCE_KEY, LIBRARY_SOURCE);
+                  event.dataTransfer.setData("manager-id", managerId);
+                }}
+                className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-sm shadow ${
+                  unlocked
+                    ? "border-violet-200/20 bg-violet-800/55 text-violet-50"
+                    : "cursor-not-allowed border-violet-200/10 bg-violet-900/35 text-violet-300/70"
+                }`}
+                type="button"
+              >
+                <CharacterIcon managerId={managerId} />
+                <div>
+                  <div className="font-medium">{manager.name}</div>
+                  <div className="text-xs text-violet-200">{manager.pps} pps</div>
+                </div>
+                <span className={`ml-auto rounded-md px-2 py-1 text-[10px] font-semibold ${
+                  unlocked ? "bg-emerald-300/20 text-emerald-100" : "bg-violet-200/10 text-violet-200/80"
+                }`}>
+                  {unlocked ? "Unlocked" : "Locked"}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </aside>
 
@@ -223,41 +154,22 @@ export function DiscoveryBoard() {
 
           {tiles.map((tile) => {
             const unlocked = managers[tile.managerId]?.unlocked;
-
             return (
               <button
                 key={tile.id}
                 draggable={unlocked}
                 onDragStart={(event) => {
-                  if (!unlocked) {
-                    event.preventDefault();
-                    return;
-                  }
-
+                  if (!unlocked) { event.preventDefault(); return; }
                   event.dataTransfer.setData(DRAG_SOURCE_KEY, WORKSPACE_SOURCE);
                   event.dataTransfer.setData("manager-id", tile.managerId);
                 }}
                 onDragEnd={(event) => {
-                  if (!unlocked) {
-                    return;
-                  }
-
+                  if (!unlocked) return;
                   const workspace = event.currentTarget.parentElement?.getBoundingClientRect();
-                  if (!workspace) {
-                    return;
-                  }
-
-                  const nextX = event.clientX - workspace.left - TILE_SIZE / 2;
-                  const nextY = event.clientY - workspace.top - TILE_SIZE / 2;
-
-                  combineAt(tile.id, nextX, nextY, workspace.width, workspace.height);
+                  if (!workspace) return;
+                  combineAt(tile.id, event.clientX - workspace.left - TILE_SIZE / 2, event.clientY - workspace.top - TILE_SIZE / 2, workspace.width, workspace.height);
                 }}
-                style={{
-                  left: `${tile.x}px`,
-                  top: `${tile.y}px`,
-                  width: `${TILE_SIZE}px`,
-                  height: `${TILE_SIZE}px`,
-                }}
+                style={{ left: `${tile.x}px`, top: `${tile.y}px`, width: `${TILE_SIZE}px`, height: `${TILE_SIZE}px` }}
                 className={`absolute flex flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-center text-[11px] font-medium shadow-lg transition-transform ${
                   unlocked
                     ? "border-violet-100/30 bg-violet-700/80 text-violet-50 hover:scale-105"

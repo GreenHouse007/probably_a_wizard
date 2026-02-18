@@ -1,4 +1,4 @@
-import type { Buildings, Inventory, ManagerId, ManagerSlot } from "./game-data";
+import type { BuildingManagerSlot, Buildings, ChainId, Inventory, ManagerId, ManagerSlot } from "./game-data";
 
 export type PersistedGameState = {
   inventory: Inventory;
@@ -6,12 +6,15 @@ export type PersistedGameState = {
   unlockedManagerIds: ManagerId[];
   discoveredManagerIds: ManagerId[];
   slots: ManagerSlot[];
+  buildingSlots?: BuildingManagerSlot[];
+  activeChainTier: Record<ChainId, number>;
+  managerLevels?: Record<ManagerId, number>;
   lastActiveAt: number;
 };
 
-const STORAGE_KEY = "probably-a-wizard-mvp-save-v3";
+const STORAGE_KEY = "probably-a-wizard-save-v4";
+const LEGACY_KEY = "probably-a-wizard-mvp-save-v3";
 
-// Dexie-ready interface for easy future swap.
 export interface GamePersistence {
   load(): Promise<PersistedGameState | null>;
   save(state: PersistedGameState): Promise<void>;
@@ -20,36 +23,35 @@ export interface GamePersistence {
 
 class LocalStoragePersistence implements GamePersistence {
   async load() {
-    if (typeof window === "undefined") {
-      return null;
-    }
+    if (typeof window === "undefined") return null;
 
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return null;
+    if (raw) {
+      try {
+        return JSON.parse(raw) as PersistedGameState;
+      } catch {
+        return null;
+      }
     }
 
-    try {
-      return JSON.parse(raw) as PersistedGameState;
-    } catch {
-      return null;
+    // Detect legacy v3 save — wipe it and return null (clean start)
+    const legacy = window.localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      window.localStorage.removeItem(LEGACY_KEY);
     }
+
+    return null;
   }
 
   async save(state: PersistedGameState) {
-    if (typeof window === "undefined") {
-      return;
-    }
-
+    if (typeof window === "undefined") return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
   async clear() {
-    if (typeof window === "undefined") {
-      return;
-    }
-
+    if (typeof window === "undefined") return;
     window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_KEY);
   }
 }
 

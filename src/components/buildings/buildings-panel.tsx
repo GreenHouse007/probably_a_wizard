@@ -1,144 +1,600 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, useMemo } from "react";
+import { CharacterIcon, ResourceIcon } from "@/components/ui/icons";
 import {
+  RESOURCE_CHAINS,
   RESOURCE_LABELS,
-  getApartmentUpgradeCost,
-  getHouseCost,
-  getLibraryBuildCost,
-  getLibraryUpgradeCost,
-  getLumberMillBuildCost,
-  getLumberMillUpgradeCost,
-  getMineBuildCost,
-  getMineUpgradeCost,
-  getQuarryBuildCost,
-  getQuarryUpgradeCost,
+  getBuildingsForChain,
+  getBuildingById,
+  getHousingTierName,
+  getHousingUpgradeCost,
+  getNewChainCost,
+  getStandaloneBuildings,
+  isBuildingPrerequisiteMet,
+  type BuildingDefinition,
+  type BuildingId,
+  type BuildingManagerSlot,
+  type ChainId,
+  type Inventory,
+  type ManagerId,
 } from "@/lib/game-data";
 import { useGameStore } from "@/store/game-store";
-import { CityOverview } from "@/components/city/city-overview";
-import { BuildingIcon } from "@/components/ui/icons";
 
-const formatCost = (cost: Record<string, number> | Partial<Record<string, number>> | null) =>
-  cost
-    ? Object.entries(cost)
-        .map(([resource, amount]) => `${amount} ${RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}`)
-        .join(" + ")
-    : "Max level reached";
+const CHAIN_ICONS: Record<ChainId, string> = {
+  food: "🍎",
+  construction: "🔨",
+  energy: "⚡",
+  culture: "📚",
+};
 
-export function BuildingsPanel() {
-  const {
-    inventory,
-    buildings,
-    housedPeople,
-    housingCapacity,
-    buildHouseOrApartment,
-    buildOrUpgradeLumberMill,
-    buildOrUpgradeQuarry,
-    buildOrUpgradeMine,
-    buildOrUpgradeLibrary,
-  } = useGameStore();
+type ActiveTab = ChainId | "standalone";
 
-  const housingCost = getHouseCost(buildings.houses) ?? getApartmentUpgradeCost();
-  const lumberCost = buildings.lumberMillLevel === 0 ? getLumberMillBuildCost() : getLumberMillUpgradeCost(buildings.lumberMillLevel);
-  const quarryCost = buildings.quarryLevel === 0 ? getQuarryBuildCost() : getQuarryUpgradeCost(buildings.quarryLevel);
-  const mineCost = buildings.mineLevel === 0 ? getMineBuildCost() : getMineUpgradeCost(buildings.mineLevel);
-  const libraryCost = buildings.libraryLevel === 0 ? getLibraryBuildCost() : getLibraryUpgradeCost(buildings.libraryLevel);
+function formatCosts(costs: Partial<Inventory>): string {
+  return Object.entries(costs)
+    .map(([resource, amount]) => `${amount} ${RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}`)
+    .join(" + ");
+}
 
-  return (
-    <section className="space-y-4 rounded-2xl border border-violet-300/25 bg-violet-900/25 p-5">
-      <CityOverview />
-      <div className="rounded-xl border border-violet-300/20 bg-violet-950/30 p-4 text-sm text-violet-100">
-        Capacity: {housedPeople} / {housingCapacity}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <BuildingCard
-          icon={<BuildingIcon buildingId="housing" />}
-          title={buildings.houses < 4 ? `Housing (House ${buildings.houses + 1}/4)` : "Housing (Apartment Upgrade)"}
-          subtitle={buildings.houses < 4 ? "Build up to 4 houses, then upgrade apartments (+4 capacity)." : "Apartment upgrades are unlimited and add +4 capacity."}
-          status={`Houses: ${buildings.houses} · Apartments: ${buildings.apartments}`}
-          costLabel={formatCost(housingCost)}
-          buttonLabel={buildings.houses < 4 ? "Build House" : "Upgrade Apartment"}
-          onClick={buildHouseOrApartment}
-        />
-        <BuildingCard
-          icon={<BuildingIcon buildingId="lumber-mill" />}
-          title="Lumber Mill"
-          subtitle="Unlocks Logs resource. Upgrades improve log production speed."
-          status={`Level: ${buildings.lumberMillLevel}/4`}
-          costLabel={formatCost(lumberCost)}
-          buttonLabel={buildings.lumberMillLevel === 0 ? "Build Lumber Mill" : "Upgrade Lumber Mill"}
-          onClick={buildOrUpgradeLumberMill}
-        />
-        <BuildingCard
-          icon={<BuildingIcon buildingId="quarry" />}
-          title="Quarry"
-          subtitle="Unlocks Ore resource."
-          status={`Level: ${buildings.quarryLevel}/4`}
-          costLabel={formatCost(quarryCost)}
-          buttonLabel={buildings.quarryLevel === 0 ? "Build Quarry" : "Upgrade Quarry"}
-          onClick={buildOrUpgradeQuarry}
-        />
-        <BuildingCard
-          icon={<BuildingIcon buildingId="mine" />}
-          title="Mine"
-          subtitle="Unlocks Gold resource."
-          status={`Level: ${buildings.mineLevel}/3`}
-          costLabel={formatCost(mineCost)}
-          buttonLabel={buildings.mineLevel === 0 ? "Build Mine" : "Upgrade Mine"}
-          onClick={buildOrUpgradeMine}
-        />
-        <BuildingCard
-          icon={<BuildingIcon buildingId="library" />}
-          title="Library"
-          subtitle="Unlocks Knowledge resource and advanced characters."
-          status={`Level: ${buildings.libraryLevel}/3`}
-          costLabel={formatCost(libraryCost)}
-          buttonLabel={buildings.libraryLevel === 0 ? "Build Library" : "Upgrade Library"}
-          onClick={buildOrUpgradeLibrary}
-        />
-      </div>
-
-      <p className="text-xs text-violet-200/80">
-        Inventory snapshot: {Object.entries(inventory).map(([resource, amount]) => `${Math.floor(amount)} ${RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}`).join(" · ")}
-      </p>
-    </section>
+function canAffordCost(inventory: Inventory, costs: Partial<Inventory>): boolean {
+  return Object.entries(costs).every(
+    ([resource, amount]) => inventory[resource as keyof Inventory] >= (amount ?? 0),
   );
 }
 
-function BuildingCard({
-  icon,
-  title,
-  subtitle,
-  status,
-  costLabel,
-  buttonLabel,
-  onClick,
-}: {
-  icon: ReactNode;
-  title: string;
-  subtitle: string;
-  status: string;
-  costLabel: string;
-  buttonLabel: string;
-  onClick: () => { ok: boolean; reason?: string };
-}) {
+export function BuildingsPanel() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>("food");
+
+  const {
+    buildings,
+    inventory,
+    buildingSlots,
+    assignManagerToBuildingSlot,
+    buildBuilding,
+    convertResource,
+    upgradeHousing,
+    addHousingChain,
+    managers,
+    discoveredManagerIds,
+    slots,
+    housedPeople,
+    housingCapacity,
+  } = useGameStore();
+
+  const unlockedManagerIds = discoveredManagerIds.filter((id) => managers[id]?.unlocked);
+
+  const allAssignedManagerIds = useMemo(() => {
+    const ids = new Set<ManagerId>();
+    for (const slot of slots) {
+      if (slot.managerId) ids.add(slot.managerId);
+    }
+    for (const bSlot of buildingSlots) {
+      if (bSlot.managerId) ids.add(bSlot.managerId);
+    }
+    return ids;
+  }, [slots, buildingSlots]);
+
+  const displayBuildings =
+    activeTab === "standalone"
+      ? getStandaloneBuildings()
+      : getBuildingsForChain(activeTab as ChainId);
+
   return (
-    <div className="rounded-xl border border-violet-200/20 bg-violet-950/35 p-4">
-      <div className="flex items-center gap-2"><span>{icon}</span><h3 className="text-lg font-semibold text-violet-100">{title}</h3></div>
-      <p className="text-sm text-violet-200/90">{subtitle}</p>
-      <p className="mt-2 text-sm text-violet-100">{status}</p>
-      <p className="mt-1 text-xs text-violet-300">Next cost: {costLabel}</p>
-      <button
-        type="button"
-        onClick={() => {
-          const result = onClick();
-          if (!result.ok) window.alert(result.reason);
-        }}
-        className="mt-3 rounded-lg bg-violet-300 px-4 py-2 text-sm font-semibold text-violet-950 transition hover:bg-violet-200"
-      >
-        {buttonLabel}
-      </button>
+    <div className="space-y-4">
+      {/* Housing */}
+      <HousingSection
+        buildings={buildings}
+        inventory={inventory}
+        housedPeople={housedPeople}
+        housingCapacity={housingCapacity}
+        upgradeHousing={upgradeHousing}
+        addHousingChain={addHousingChain}
+      />
+
+      {/* Chain tabs */}
+      <div className="flex flex-wrap gap-2">
+        {RESOURCE_CHAINS.map((chain) => (
+          <button
+            key={chain.id}
+            type="button"
+            onClick={() => setActiveTab(chain.id)}
+            className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium transition ${
+              activeTab === chain.id
+                ? "bg-violet-300 text-violet-950"
+                : "text-violet-100 hover:bg-violet-200/15"
+            }`}
+          >
+            <span>{CHAIN_ICONS[chain.id]}</span>
+            <span>{chain.name}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setActiveTab("standalone")}
+          className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium transition ${
+            activeTab === "standalone"
+              ? "bg-violet-300 text-violet-950"
+              : "text-violet-100 hover:bg-violet-200/15"
+          }`}
+        >
+          <span>🏛️</span>
+          <span>Special</span>
+        </button>
+      </div>
+
+      {/* Building list */}
+      <div className="space-y-3">
+        {displayBuildings.map((building) => {
+          const built = !!buildings.builtBuildings[building.id];
+          const prereqMet = isBuildingPrerequisiteMet(building, buildings);
+          const affordable = canAffordCost(inventory, building.buildCost);
+          const slotsForBuilding = buildingSlots.filter((s) => s.buildingId === building.id);
+
+          if (building.isStandalone) {
+            return (
+              <StandaloneBuildingCard
+                key={building.id}
+                building={building}
+                built={built}
+                affordable={affordable}
+                inventory={inventory}
+                onBuild={() => {
+                  const result = buildBuilding(building.id);
+                  if (!result.ok) window.alert(result.reason);
+                }}
+              />
+            );
+          }
+
+          return (
+            <BuildingCard
+              key={building.id}
+              building={building}
+              built={built}
+              prereqMet={prereqMet}
+              affordable={affordable}
+              inventory={inventory}
+              buildingSlots={slotsForBuilding}
+              managers={managers}
+              unlockedManagerIds={unlockedManagerIds}
+              allAssignedManagerIds={allAssignedManagerIds}
+              onBuild={() => {
+                const result = buildBuilding(building.id);
+                if (!result.ok) window.alert(result.reason);
+              }}
+              onConvert={() => convertResource(building.id)}
+              onAssignManager={(slotId, managerId) => {
+                const result = assignManagerToBuildingSlot(slotId, managerId);
+                if (!result.ok) window.alert(result.reason);
+              }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
+
+// ─── Housing Section ──────────────────────────────────────────────────────────
+
+function HousingSection({
+  buildings,
+  inventory,
+  housedPeople,
+  housingCapacity,
+  upgradeHousing,
+  addHousingChain,
+}: {
+  buildings: { housingLevel: number; housingChains: number; builtBuildings: Record<string, boolean> };
+  inventory: Inventory;
+  housedPeople: number;
+  housingCapacity: number;
+  upgradeHousing: () => { ok: boolean; reason?: string };
+  addHousingChain: () => { ok: boolean; reason?: string };
+}) {
+  const upgradeCost =
+    buildings.housingChains > 0 && buildings.housingLevel < 7
+      ? getHousingUpgradeCost(buildings.housingLevel, buildings.housingChains)
+      : null;
+  const chainCost = buildings.housingChains < 4 ? getNewChainCost(buildings.housingLevel) : null;
+  const canAffordUpgrade = upgradeCost ? canAffordCost(inventory, upgradeCost) : false;
+  const canAffordChain = chainCost ? canAffordCost(inventory, chainCost) : false;
+
+  return (
+    <div className="rounded-2xl border border-violet-300/25 bg-violet-900/25 p-4">
+      <h2 className="mb-3 text-lg font-semibold text-violet-100">Housing</h2>
+
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          {buildings.housingChains === 0 ? (
+            <p className="text-sm text-violet-200/80">No housing built yet</p>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-violet-100">
+                {getHousingTierName(buildings.housingLevel)}{" "}
+                <span className="text-violet-300/70">(Level {buildings.housingLevel})</span>
+              </p>
+              <p className="text-xs text-violet-200/70">
+                {buildings.housingChains} chain{buildings.housingChains !== 1 ? "s" : ""} · Housed:{" "}
+                {housedPeople}/{housingCapacity}
+              </p>
+            </>
+          )}
+        </div>
+        {buildings.housingChains > 0 && (
+          <span className="text-xs text-violet-300/60">Chains: {buildings.housingChains}/4</span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {chainCost ? (
+          <button
+            type="button"
+            onClick={() => {
+              const result = addHousingChain();
+              if (!result.ok) window.alert(result.reason);
+            }}
+            disabled={!canAffordChain}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+              canAffordChain
+                ? "bg-violet-600 text-white hover:bg-violet-500"
+                : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+            }`}
+          >
+            <span className="block">{buildings.housingChains === 0 ? "Add Housing Chain" : "Add Chain"}</span>
+            <span className="block text-xs opacity-75">{formatCosts(chainCost)}</span>
+          </button>
+        ) : (
+          <p className="self-center text-xs text-violet-300/60">Max chains (4/4)</p>
+        )}
+
+        {upgradeCost ? (
+          <button
+            type="button"
+            onClick={() => {
+              const result = upgradeHousing();
+              if (!result.ok) window.alert(result.reason);
+            }}
+            disabled={!canAffordUpgrade}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+              canAffordUpgrade
+                ? "bg-violet-600 text-white hover:bg-violet-500"
+                : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+            }`}
+          >
+            <span className="block">→ {getHousingTierName(buildings.housingLevel + 1)}</span>
+            <span className="block text-xs opacity-75">{formatCosts(upgradeCost)}</span>
+          </button>
+        ) : buildings.housingChains > 0 && buildings.housingLevel >= 7 ? (
+          <p className="self-center text-xs text-violet-300/60">Max level (Space Station)</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ─── Building Card ────────────────────────────────────────────────────────────
+
+function BuildingCard({
+  building,
+  built,
+  prereqMet,
+  affordable,
+  inventory,
+  buildingSlots,
+  managers,
+  unlockedManagerIds,
+  allAssignedManagerIds,
+  onBuild,
+  onConvert,
+  onAssignManager,
+}: {
+  building: BuildingDefinition;
+  built: boolean;
+  prereqMet: boolean;
+  affordable: boolean;
+  inventory: Inventory;
+  buildingSlots: BuildingManagerSlot[];
+  managers: Record<string, { id: ManagerId; name: string; unlocked: boolean }>;
+  unlockedManagerIds: ManagerId[];
+  allAssignedManagerIds: Set<ManagerId>;
+  onBuild: () => void;
+  onConvert: () => { ok: boolean; reason?: string };
+  onAssignManager: (slotId: string, managerId: ManagerId | null) => void;
+}) {
+  const isConverter = building.conversionInput !== null && building.conversionOutput !== null;
+  const inputAmt = building.conversionInput ? Math.floor(inventory[building.conversionInput]) : 0;
+  const canConvert = isConverter && built && inputAmt >= building.conversionRatio;
+  const numAssigned = buildingSlots.filter((s) => s.managerId).length;
+
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        built ? "border-emerald-200/30 bg-emerald-950/20" : "border-violet-200/20 bg-violet-950/30"
+      }`}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold text-violet-100">{building.name}</h3>
+            {building.isInfrastructure && (
+              <span className="rounded-full bg-blue-900/60 px-2 py-0.5 text-xs text-blue-300">
+                Infrastructure
+              </span>
+            )}
+            {isConverter && !building.isInfrastructure && (
+              <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">
+                Converter
+              </span>
+            )}
+            {built && (
+              <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-xs text-emerald-300">
+                ✓ Built
+              </span>
+            )}
+          </div>
+
+          {!built && (
+            <>
+              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                {Object.entries(building.buildCost).map(([resource, amount]) => {
+                  const has = inventory[resource as keyof Inventory] >= (amount ?? 0);
+                  return (
+                    <span
+                      key={resource}
+                      className={`flex items-center gap-1 text-sm ${has ? "text-violet-200" : "text-red-400"}`}
+                    >
+                      <ResourceIcon resource={resource as ResourceType} />
+                      {amount} {RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}
+                    </span>
+                  );
+                })}
+              </div>
+              {!prereqMet && building.prerequisite && (
+                <p className="mt-1 text-xs text-amber-400/90">
+                  Requires: {getBuildingById(building.prerequisite)?.name ?? building.prerequisite}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        {!built && (
+          <button
+            type="button"
+            onClick={onBuild}
+            disabled={!affordable || !prereqMet}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              affordable && prereqMet
+                ? "bg-violet-600 text-white hover:bg-violet-500"
+                : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+            }`}
+          >
+            Build
+          </button>
+        )}
+      </div>
+
+      {/* Converter section */}
+      {built && isConverter && building.conversionInput && building.conversionOutput && (
+        <div className="mt-3 space-y-3 border-t border-violet-200/15 pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-violet-200">
+                {building.conversionRatio} {RESOURCE_LABELS[building.conversionInput]} →{" "}
+                1 {RESOURCE_LABELS[building.conversionOutput]}
+              </p>
+              <p className="text-xs text-violet-300/70">
+                Have: {inputAmt} {RESOURCE_LABELS[building.conversionInput]}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const result = onConvert();
+                if (!result.ok) window.alert(result.reason);
+              }}
+              disabled={!canConvert}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                canConvert
+                  ? "bg-amber-600 text-white hover:bg-amber-500"
+                  : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+              }`}
+            >
+              Convert
+            </button>
+          </div>
+
+          {/* Manager slots */}
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-violet-300">
+              Auto-convert
+            </p>
+            <div className="flex gap-2">
+              {buildingSlots.map((slot) => (
+                <BuildingManagerSlotButton
+                  key={slot.id}
+                  slotId={slot.id}
+                  managerId={slot.managerId}
+                  managers={managers}
+                  unlockedManagerIds={unlockedManagerIds}
+                  allAssignedManagerIds={allAssignedManagerIds}
+                  onAssign={(managerId) => onAssignManager(slot.id, managerId)}
+                />
+              ))}
+            </div>
+            {numAssigned > 0 && (
+              <p className="mt-1 text-xs text-violet-200/60">
+                {numAssigned} manager{numAssigned > 1 ? "s" : ""} auto-converting
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Infrastructure note */}
+      {built && building.isInfrastructure && (
+        <p className="mt-2 text-xs italic text-blue-300/70">
+          Unlocks the next building in this chain.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Building Manager Slot Button ─────────────────────────────────────────────
+
+function BuildingManagerSlotButton({
+  slotId,
+  managerId,
+  managers,
+  unlockedManagerIds,
+  allAssignedManagerIds,
+  onAssign,
+}: {
+  slotId: string;
+  managerId: ManagerId | null;
+  managers: Record<string, { id: ManagerId; name: string; unlocked: boolean }>;
+  unlockedManagerIds: ManagerId[];
+  allAssignedManagerIds: Set<ManagerId>;
+  onAssign: (managerId: ManagerId | null) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const assignedManager = managerId ? managers[managerId] : null;
+
+  const availableManagerIds = useMemo(
+    () => unlockedManagerIds.filter((id) => id === managerId || !allAssignedManagerIds.has(id)),
+    [unlockedManagerIds, allAssignedManagerIds, managerId],
+  );
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setMenuOpen((c) => !c)}
+        className="flex h-14 w-14 items-center justify-center rounded-xl border border-dashed border-violet-200/40 bg-violet-950/40"
+        aria-label={assignedManager ? `Change ${assignedManager.name}` : "Assign manager"}
+      >
+        {assignedManager ? (
+          <CharacterIcon managerId={assignedManager.id} />
+        ) : (
+          <span className="text-2xl text-violet-200">+</span>
+        )}
+      </button>
+      {assignedManager && (
+        <p className="mt-1 text-center text-[10px] text-violet-200/70">
+          {assignedManager.name.slice(0, 6)}
+        </p>
+      )}
+
+      {menuOpen && (
+        <div className="absolute left-0 top-16 z-20 min-w-48 rounded-xl border border-violet-200/25 bg-violet-950 p-2 shadow-2xl">
+          {assignedManager && (
+            <button
+              type="button"
+              onClick={() => {
+                onAssign(null);
+                setMenuOpen(false);
+              }}
+              className="mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-violet-200 hover:bg-violet-800/60"
+            >
+              Clear slot
+            </button>
+          )}
+          {availableManagerIds.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-violet-300/80">No available managers</p>
+          ) : (
+            availableManagerIds.map((mId) => (
+              <button
+                key={mId}
+                type="button"
+                onClick={() => {
+                  onAssign(mId);
+                  setMenuOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-violet-100 hover:bg-violet-800/60"
+              >
+                <CharacterIcon managerId={mId} />
+                <span>{managers[mId].name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Standalone Building Card ─────────────────────────────────────────────────
+
+function StandaloneBuildingCard({
+  building,
+  built,
+  affordable,
+  inventory,
+  onBuild,
+}: {
+  building: BuildingDefinition;
+  built: boolean;
+  affordable: boolean;
+  inventory: Inventory;
+  onBuild: () => void;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        built ? "border-emerald-200/30 bg-emerald-950/20" : "border-violet-200/20 bg-violet-950/30"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold text-violet-100">{building.name}</h3>
+            {built && (
+              <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-xs text-emerald-300">
+                ✓ Built
+              </span>
+            )}
+          </div>
+          {!built ? (
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+              {Object.entries(building.buildCost).map(([resource, amount]) => {
+                const has = inventory[resource as keyof Inventory] >= (amount ?? 0);
+                return (
+                  <span
+                    key={resource}
+                    className={`flex items-center gap-1 text-sm ${has ? "text-violet-200" : "text-red-400"}`}
+                  >
+                    <ResourceIcon resource={resource as ResourceType} />
+                    {amount} {RESOURCE_LABELS[resource as keyof typeof RESOURCE_LABELS]}
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-1 text-sm italic text-violet-200/60">Special features coming soon.</p>
+          )}
+        </div>
+
+        {!built && (
+          <button
+            type="button"
+            onClick={onBuild}
+            disabled={!affordable}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              affordable
+                ? "bg-violet-600 text-white hover:bg-violet-500"
+                : "cursor-not-allowed bg-violet-900/50 text-violet-400"
+            }`}
+          >
+            Build
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Local type alias needed for casting
+type ResourceType = keyof Inventory;
