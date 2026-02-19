@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { getChainTierResource, type BuildingId } from "@/lib/game-data";
+import { getChainTierResource, getEffectiveMultiplier, type BuildingId } from "@/lib/game-data";
 import { useGameStore } from "@/store/game-store";
 
 // Each assigned manager contributes 1 conversion per 20 seconds
 const CONVERSION_RATE_PER_MANAGER = 1 / 20;
 
 export function GameRuntime() {
-  const { slots, buildingSlots, addResource, getEffectivePps, hydrated, buildings, convertResource } =
+  const { slots, buildingSlots, addResource, getEffectivePps, hydrated, buildings, convertResource, managerLevels } =
     useGameStore();
   const fractionalRef = useRef<Record<string, number>>({});
   const conversionProgressRef = useRef<Record<string, number>>({});
@@ -38,17 +38,20 @@ export function GameRuntime() {
       }
 
       // ── Auto-conversion loop ─────────────────────────────────────────────
-      // Count assigned managers per building
-      const managersPerBuilding: Record<string, number> = {};
+      // Compute effective rate per building, weighted by each manager's level
+      const ratePerBuilding: Record<string, number> = {};
       for (const bSlot of buildingSlots) {
         if (!bSlot.managerId) continue;
         if (!buildings.builtBuildings[bSlot.buildingId]) continue;
-        managersPerBuilding[bSlot.buildingId] = (managersPerBuilding[bSlot.buildingId] ?? 0) + 1;
+        const level = managerLevels[bSlot.managerId] ?? 0;
+        ratePerBuilding[bSlot.buildingId] =
+          (ratePerBuilding[bSlot.buildingId] ?? 0) +
+          CONVERSION_RATE_PER_MANAGER * getEffectiveMultiplier(level);
       }
 
-      for (const [buildingId, numManagers] of Object.entries(managersPerBuilding)) {
+      for (const [buildingId, rate] of Object.entries(ratePerBuilding)) {
         const current = conversionProgressRef.current[buildingId] ?? 0;
-        const next = current + numManagers * CONVERSION_RATE_PER_MANAGER * deltaSeconds;
+        const next = current + rate * deltaSeconds;
 
         if (next >= 1) {
           const result = convertResource(buildingId as BuildingId);
@@ -60,7 +63,7 @@ export function GameRuntime() {
     }, 250);
 
     return () => window.clearInterval(interval);
-  }, [slots, buildingSlots, addResource, getEffectivePps, hydrated, buildings, convertResource]);
+  }, [slots, buildingSlots, addResource, getEffectivePps, hydrated, buildings, convertResource, managerLevels]);
 
   return null;
 }

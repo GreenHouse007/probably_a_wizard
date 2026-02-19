@@ -516,32 +516,32 @@ const MANAGER_CONFIG: ManagerConfig[] = [
     fullBio: "Strange doesn't quite fit into the world. They move through reality as if they belong somewhere else entirely. Their presence causes unusual reactions, and when combined with others, unpredictable things tend to happen.",
   },
   {
-    id: "farmer", name: "Farmer", pps: 0.25, housingCost: 0, tier: 1,
+    id: "farmer", name: "Farmer", pps: 0.25, housingCost: 2, tier: 1,
     shortBio: "Accidentally invented agriculture by dropping food and forgetting about it.",
     fullBio: "The Farmer learned that life can grow when given patience and care. What began as simple gathering turned into cultivation, and cultivation turned into abundance. Their work transformed survival into stability.",
   },
   {
-    id: "fisher", name: "Fisher", pps: 0.25, housingCost: 0, tier: 1,
+    id: "fisher", name: "Fisher", pps: 0.25, housingCost: 2, tier: 1,
     shortBio: "Stares at water for hours. Calls it \"productive.\"",
     fullBio: "The Fisher learned that beneath still waters lies hidden life. They built tools to reach what hands alone could not grasp. Their quiet patience feeds others and expands the reach of survival.",
   },
   {
-    id: "hunter", name: "Hunter", pps: 0.3, housingCost: 0, tier: 1,
+    id: "hunter", name: "Hunter", pps: 0.3, housingCost: 2, tier: 1,
     shortBio: "Tracks creatures using instinct, patience, and questionable guesses.",
     fullBio: "The Hunter moves where others cannot, following signs invisible to most. They rely on instinct sharpened by necessity. Their success ensures that survival does not depend on chance alone.",
   },
   {
-    id: "toolmaker", name: "Toolmaker", pps: 0.3, housingCost: 0, tier: 1,
+    id: "toolmaker", name: "Toolmaker", pps: 0.3, housingCost: 2, tier: 1,
     shortBio: "Solves problems by making new problems that solve old problems.",
     fullBio: "The Toolmaker understands that hands alone are not enough. They create instruments that extend strength, precision, and possibility. Each new tool unlocks new ways to shape the world.",
   },
   {
-    id: "scholar", name: "Scholar", pps: 0.35, housingCost: 0, tier: 2,
+    id: "scholar", name: "Scholar", pps: 0.35, housingCost: 3, tier: 2,
     shortBio: "Knows many things. Rarely useful things, but still impressive.",
     fullBio: "The Scholar collects knowledge the way others collect food. They observe patterns, record discoveries, and pass understanding forward. Their mind builds foundations no hammer ever could.",
   },
   {
-    id: "engineer", name: "Engineer", pps: 0.4, housingCost: 0, tier: 2,
+    id: "engineer", name: "Engineer", pps: 0.4, housingCost: 3, tier: 2,
     shortBio: "Can fix anything. May leave behind extra screws.",
     fullBio: "The Engineer sees systems where others see parts. They understand how things work together and how to improve them. Their creations shape the future, even when they don't fully understand the consequences themselves.",
   },

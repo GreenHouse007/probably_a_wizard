@@ -1,4 +1,5 @@
-import { MANAGER_DEFINITIONS, type ManagerId, type ResourceType } from "@/lib/game-data";
+import Image from "next/image";
+import { type BuildingId, type ManagerId, type ResourceType } from "@/lib/game-data";
 
 export function ResourceIcon({ resource }: { resource: ResourceType }) {
   const className = "h-10 w-10";
@@ -282,26 +283,30 @@ export function ResourceIcon({ resource }: { resource: ResourceType }) {
   );
 }
 
-const TIER_COLORS = [
-  "#c4b5fd", "#d8b4fe", "#93c5fd", "#86efac", "#fcd34d",
-  "#f9a8d4", "#fdba74", "#67e8f9", "#a5b4fc", "#fca5a5", "#fde68a",
-];
-
 export function CharacterIcon({ managerId, compact = false }: { managerId: ManagerId; compact?: boolean }) {
-  const manager = MANAGER_DEFINITIONS[managerId];
-  const tier = Math.max(0, Math.min(10, manager?.tier ?? 0));
-  const fill = TIER_COLORS[tier];
-  const className = compact ? "h-7 w-7" : "h-9 w-9";
-
+  const size = compact ? 28 : 36;
   return (
-    <svg viewBox="0 0 56 56" className={className} aria-hidden>
-      <rect x="4" y="4" width="48" height="48" rx="14" fill={fill} />
-      <circle cx="28" cy="22" r="8" fill="#1f2937" opacity=".75" />
-      <path d="M15 44c2-8 7-12 13-12s11 4 13 12" fill="#1f2937" opacity=".75" />
-      <text x="28" y="18" textAnchor="middle" fontSize="9" fill="#111827" fontWeight="700" fontFamily="ui-sans-serif, system-ui">
-        {tier === 0 ? "S" : `T${tier}`}
-      </text>
-    </svg>
+    <Image
+      src={`https://api.dicebear.com/9.x/pixel-art/svg?seed=${managerId}`}
+      alt={managerId}
+      width={size}
+      height={size}
+      unoptimized
+      className="rounded-lg"
+    />
+  );
+}
+
+export function BuildingIcon({ buildingId, size = 48 }: { buildingId: BuildingId; size?: number }) {
+  return (
+    <Image
+      src={`https://api.dicebear.com/9.x/shapes/svg?seed=${buildingId}`}
+      alt={buildingId}
+      width={size}
+      height={size}
+      unoptimized
+      className="rounded-xl"
+    />
   );
 }
 

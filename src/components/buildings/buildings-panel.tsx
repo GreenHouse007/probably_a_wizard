@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { CharacterIcon, ResourceIcon } from "@/components/ui/icons";
+import { BuildingIcon, CharacterIcon, ResourceIcon } from "@/components/ui/icons";
 import {
   HOUSING_TIERS,
   RESOURCE_CHAINS,
@@ -301,6 +301,7 @@ function BuildingCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            <BuildingIcon buildingId={building.id} size={40} />
             <h3 className="font-semibold text-violet-100">{building.name}</h3>
             {building.isInfrastructure && (
               <span className="rounded-full bg-blue-900/60 px-2 py-0.5 text-xs text-blue-300">
@@ -534,6 +535,7 @@ function StandaloneBuildingCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            <BuildingIcon buildingId={building.id} size={40} />
             <h3 className="font-semibold text-violet-100">{building.name}</h3>
             {built && (
               <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-xs text-emerald-300">

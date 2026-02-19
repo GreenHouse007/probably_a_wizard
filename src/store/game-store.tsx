@@ -22,7 +22,9 @@ import {
   STARTER_MANAGER_IDS,
   getBuildingById,
   getChainTierResource,
+  getConverterBuilding,
   getEffectiveMultiplier,
+  RESOURCE_CHAINS,
   getHousingBuildCost,
   getHousingCapacity,
   getLevelUpCost,
@@ -45,6 +47,7 @@ import {
 import { gamePersistence } from "@/lib/persistence";
 
 const OFFLINE_GAIN_CAP_SECONDS = 12 * 60 * 60;
+const OFFLINE_CONVERSION_RATE = 1 / 20; // matches CONVERSION_RATE_PER_MANAGER in game-runtime
 
 type OfflineProgressSummary = {
   elapsedSeconds: number;
@@ -212,6 +215,44 @@ export function GameStoreProvider({ children }: { children: React.ReactNode }) {
       for (const [resource, amount] of Object.entries(gains)) {
         const key = resource as ResourceType;
         nextInventory[key] = Number((nextInventory[key] + (amount ?? 0)).toFixed(3));
+      }
+
+      // Simulate offline conversions in chain-tier order (T1 first so gathered resources feed T2+)
+      if (elapsedSeconds > 0 && saved.buildings) {
+        for (const chain of RESOURCE_CHAINS) {
+          for (let tierIdx = 1; tierIdx < chain.tiers.length; tierIdx++) {
+            const resourceId = getChainTierResource(chain.id, tierIdx);
+            const converterBuilding = getConverterBuilding(resourceId);
+            if (!converterBuilding) continue;
+            if (!saved.buildings.builtBuildings[converterBuilding.id]) continue;
+
+            let totalRate = 0;
+            for (const bSlot of restoredBuildingSlots) {
+              if (bSlot.buildingId !== converterBuilding.id) continue;
+              if (!bSlot.managerId) continue;
+              const level = restoredManagerLevels[bSlot.managerId as ManagerId] ?? 0;
+              totalRate += OFFLINE_CONVERSION_RATE * getEffectiveMultiplier(level);
+            }
+            if (totalRate <= 0) continue;
+
+            const maxConversions = Math.floor(totalRate * elapsedSeconds);
+            if (maxConversions <= 0) continue;
+
+            const inputResource = converterBuilding.conversionInput!;
+            const outputResource = converterBuilding.conversionOutput!;
+            const ratio = converterBuilding.conversionRatio;
+
+            const availableInput = nextInventory[inputResource] ?? 0;
+            const affordableConversions = Math.floor(availableInput / ratio);
+            const actualConversions = Math.min(maxConversions, affordableConversions);
+
+            if (actualConversions > 0) {
+              nextInventory[inputResource] = availableInput - actualConversions * ratio;
+              nextInventory[outputResource] = (nextInventory[outputResource] ?? 0) + actualConversions;
+              gains[outputResource] = (gains[outputResource] ?? 0) + actualConversions;
+            }
+          }
+        }
       }
 
       setInventory(nextInventory);
